@@ -1,0 +1,4 @@
+LIBRARY resize_ks
+
+EXPORTS
+	GetFilterPluginTable @1

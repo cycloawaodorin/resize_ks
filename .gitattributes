@@ -1,0 +1,3 @@
+filter2.hpp linguist-vendored
+*.md linguist-documentation
+/LICENSE linguist-documentation
