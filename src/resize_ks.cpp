@@ -1,7 +1,7 @@
 ﻿#include <Windows.h>
 #include <cmath>
 #include <numeric>
-#include <thread>
+#include "util.hpp"
 #include "filter2.hpp"
 #include "version.hpp"
 
@@ -12,20 +12,19 @@ static FILTER_ITEM_TRACK track_mag(L"拡大率", 100.0, 0.0, 10000.0, 0.01);
 static FILTER_ITEM_TRACK track_width(L"X", 100.0, 0.0, 10000.0, 0.01);
 static FILTER_ITEM_TRACK track_height(L"Y", 100.0, 0.0, 10000.0, 0.01);
 static FILTER_ITEM_CHECK check_ave(L"平均法", false);
-static FILTER_ITEM_CHECK check_dot(L"ドット数でサイズ指定", false);
-static FILTER_ITEM_TRACK track_nth(L"スレッド数", 1.0, -1000.0, 1000.0, 1.0);
+static FILTER_ITEM_CHECK check_dot(L"ピクセル数でサイズ指定", false);
 
 EXTERN_C FILTER_PLUGIN_TABLE *
 GetFilterPluginTable()
 {
 	static void* settings[] = {
-		&track_mag, &track_width, &track_height, &check_ave, &check_dot, &track_nth, nullptr
+		&track_mag, &track_width, &track_height, &check_ave, &check_dot, nullptr
 	};
 	static FILTER_PLUGIN_TABLE fpt = {
 		FILTER_PLUGIN_TABLE::FLAG_VIDEO,
 		PLUGIN_NAME,
 		L"変形",
-		PLUGIN_NAME L" " VERSION L" by KAZOON",
+		PLUGIN_NAME L" ver " VERSION L" by KAZOON",
 		settings,
 		func_proc_video,
 		nullptr, // func_proc_audio
@@ -33,200 +32,19 @@ GetFilterPluginTable()
 	return &fpt;
 }
 
-class Rational {
-private:
-	std::intmax_t numerator, denominator;
-public:
-	Rational(const std::intmax_t num, const std::intmax_t &den)
-	{
-		auto c = std::gcd(std::abs(num), std::abs(den));
-		if ( den < 0 ) {
-			numerator = -num/c;
-			denominator = -den/c;
-		} else {
-			numerator = num/c;
-			denominator = den/c;
-		}
-	}
-	Rational(const std::intmax_t i) : numerator(i), denominator(1) {}
-	Rational() : numerator(0), denominator(1) {}
-	std::intmax_t
-	get_numerator()
-	const {
-		return numerator;
-	}
-	std::intmax_t
-	get_denominator()
-	const {
-		return denominator;
-	}
-	Rational
-	operator +(const Rational &other)
-	const {
-		const std::intmax_t c = std::gcd(denominator, other.denominator);
-		const std::intmax_t s_d = denominator/c, o_d = other.denominator/c;
-		return Rational(numerator*o_d+other.numerator*s_d, denominator*o_d);
-	}
-	Rational
-	operator +(const std::intmax_t &other)
-	const {
-		return Rational(numerator+other*denominator, denominator);
-	}
-	Rational
-	operator -(const Rational &other)
-	const {
-		const std::intmax_t c = std::gcd(denominator, other.denominator);
-		const std::intmax_t s_d = denominator/c, o_d = other.denominator/c;
-		return Rational(numerator*o_d-other.numerator*s_d, denominator*o_d);
-	}
-	Rational
-	operator -(const std::intmax_t &other)
-	const {
-		return Rational(numerator-other*denominator, denominator);
-	}
-	Rational
-	operator *(const Rational &other)
-	const {
-		const std::intmax_t ca = std::gcd(std::abs(numerator), other.denominator);
-		const std::intmax_t cb = std::gcd(denominator, std::abs(other.numerator));
-		return Rational((numerator/ca) * (other.numerator/cb), (denominator/cb) * (other.denominator/ca));
-	}
-	Rational
-	operator *(const std::intmax_t &other)
-	const {
-		const std::intmax_t c = std::gcd(std::abs(other), denominator);
-		return Rational(numerator*(other/c), denominator/c);
-	}
-	Rational
-	operator /(const Rational &other)
-	const {
-		const std::intmax_t ca = std::gcd(std::abs(numerator), std::abs(other.numerator));
-		const std::intmax_t cb = std::gcd(denominator, other.denominator);
-		return Rational((numerator/ca) * (other.denominator/cb), (denominator/cb) * (other.numerator/ca));
-	}
-	Rational
-	operator /(const std::intmax_t &other)
-	const {
-		const std::intmax_t c = std::gcd(std::abs(numerator), std::abs(other));
-		return Rational(numerator/c, denominator*(other/c));
-	}
-	Rational
-	reciprocal()
-	const {
-		return Rational(denominator, numerator);
-	}
-	std::intmax_t
-	floor()
-	const {
-		const std::intmax_t r = numerator % denominator;
-		if ( r < 0 ) {
-			return ( (numerator-r)/denominator - 1 );
-		} else {
-			return ( (numerator-r)/denominator );
-		}
-	}
-	std::intmax_t
-	floor_eps()
-	const {
-		const std::intmax_t r = numerator % denominator;
-		if ( r <= 0 ) {
-			return ( (numerator-r)/denominator - 1 );
-		} else {
-			return ( (numerator-r)/denominator );
-		}
-	}
-	std::intmax_t
-	ceil()
-	const {
-		const std::intmax_t r = numerator % denominator;
-		if ( r <= 0 ) {
-			return ( (numerator-r)/denominator );
-		} else {
-			return ( (numerator-r)/denominator + 1 );
-		}
-	}
-	std::intmax_t
-	ceil_eps()
-	const {
-		const std::intmax_t r = numerator % denominator;
-		if ( r < 0 ) {
-			return ( (numerator-r)/denominator );
-		} else {
-			return ( (numerator-r)/denominator + 1 );
-		}
-	}
-	float
-	to_float()
-	const {
-		return( static_cast<float>(numerator) / static_cast<float>(denominator) );
-	}
-};
+static std::unique_ptr<ThreadPool> TP;
 
-template <class T>
-static void
-parallel_do(void (T::*f)(int, const int &), T *p, const int &n)
+EXTERN_C bool
+InitializePlugin(DWORD version)
 {
-	if ( 1 < n ) {
-		auto threads = std::make_unique<std::thread[]>(n);
-		for (int i=0; i<n; i++) {
-			threads[i] = std::thread(f, p, i, n);
-		}
-		for (int i=0; i<n; i++) {
-			threads[i].join();
-		}
-	} else {
-		(p->*f)(0, n);
-	}
+	TP = std::make_unique<ThreadPool>();
+	return true;
 }
 
-constexpr static const float PI = 3.141592653589793f;
-
-static unsigned char
-uc_cast(const float &x)
+EXTERN_C void
+UninitializePlugin()
 {
-	if ( x < 0.0f || std::isnan(x) ) {
-		return static_cast<unsigned char>(0);
-	} else if ( 255.0f < x ) {
-		return static_cast<unsigned char>(255);
-	} else {
-		return static_cast<unsigned char>(std::round(x));
-	}
-}
-static unsigned char
-uc_cast(std::intmax_t num, std::intmax_t den)
-{
-	std::intmax_t c = std::gcd(std::abs(num), std::abs(den));
-	if ( den < 0 ) {
-		num = -num/c;
-		den = -den/c;
-	} else {
-		num = num/c;
-		den = den/c;
-	}
-	if ( num <= 0 ) {
-		return static_cast<unsigned char>(0);
-	} else if ( 255*den <= num ) {
-		return static_cast<unsigned char>(255);
-	} else {
-		std::intmax_t r = num % den;
-		if ( r*2 < den ) {
-			return static_cast<unsigned char>((num-r)/den);
-		} else {
-			return static_cast<unsigned char>((num-r)/den+1);
-		}
-	}
-}
-static int
-n_th_correction(const double &d_th)
-{
-	int n_th=static_cast<int>(d_th);
-	if ( n_th <= 0 ) {
-		n_th += std::thread::hardware_concurrency();
-		if ( n_th <= 0 ) {
-			n_th = 1;
-		}
-	}
-	return n_th;
+	TP.reset(nullptr);
 }
 
 class ResizeL3 {
@@ -288,22 +106,20 @@ private:
 			weights = std::make_unique<std::unique_ptr<float[]>[]>(var);
 		}
 		void
-		set_weights(const int &start, const int &end)
+		set_weights(const int i)
 		{
-			for (auto i=start; i<end; i++) {
-				const Rational c = reversed_scale*i + correction;
-				int s, e;
-				if ( extend ) {
-					s = static_cast<int>( c.ceil_eps() ) - 3;
-					e = static_cast<int>( c.floor_eps() ) + 3;
-				} else {
-					s = static_cast<int>( ( c - reversed_scale*3 ).ceil_eps() );
-					e = static_cast<int>( ( c + reversed_scale*3 ).floor_eps() );
-				}
-				weights[i] = std::make_unique<float[]>(e-s+1);
-				for ( auto sxy = s; sxy <= e; sxy++ ) {
-					weights[i][sxy-s] = lanczos3( ((c-sxy)*weight_scale).to_float() );
-				}
+			const Rational c = reversed_scale*i + correction;
+			int s, e;
+			if ( extend ) {
+				s = static_cast<int>( c.ceil_eps() ) - 3;
+				e = static_cast<int>( c.floor_eps() ) + 3;
+			} else {
+				s = static_cast<int>( ( c - reversed_scale*3 ).ceil_eps() );
+				e = static_cast<int>( ( c + reversed_scale*3 ).floor_eps() );
+			}
+			weights[i] = std::make_unique<float[]>(e-s+1);
+			for ( auto sxy = s; sxy <= e; sxy++ ) {
+				weights[i][sxy-s] = lanczos3( ((c-sxy)*weight_scale).to_float() );
 			}
 		}
 	};
@@ -320,11 +136,11 @@ private:
 			const auto wy = wys[sy-(yrange.start)+(yrange.skipped)];
 			for ( auto sx=(xrange.start); sx<=(xrange.end); sx++ ) {
 				const auto wxy = wy*wxs[sx-(xrange.start)+(xrange.skipped)];
-				const auto s = src[sy*(x.src_size)+sx];
-				const auto wxya = wxy*s.a;
-				r += s.r*wxya;
-				g += s.g*wxya;
-				b += s.b*wxya;
+				const auto s_px = &src[sy*(x.src_size)+sx];
+				const auto wxya = wxy*s_px->a;
+				r += s_px->r*wxya;
+				g += s_px->g*wxya;
+				b += s_px->b*wxya;
 				a += wxya;
 				w += wxy;
 			}
@@ -346,20 +162,19 @@ public:
 		y.calc_params();
 	}
 	void
-	invoke_set_weights(int i, const int &n_th)
+	invoke_set_weights(int i)
 	{
-		x.set_weights( (i*(x.var))/n_th, ((i+1)*(x.var))/n_th );
-		y.set_weights( (i*(y.var))/n_th, ((i+1)*(y.var))/n_th );
+		if ( i < x.var ) {
+			x.set_weights(i);
+		} else {
+			y.set_weights(i-x.var);
+		}
 	}
 	void
-	invoke_interpolate(int i, const int &n_th)
+	invoke_interpolate(int dy)
 	{
-		const auto y_start=(i*(y.dest_size))/n_th;
-		const auto y_end=((i+1)*(y.dest_size))/n_th;
-		for (auto dy=y_start; dy<y_end; dy++) {
-			for (auto dx=0; dx<(x.dest_size); dx++) {
-				interpolate(dx, dy);
-			}
+		for (auto dx=0; dx<(x.dest_size); dx++) {
+			interpolate(dx, dy);
 		}
 	}
 };
@@ -372,19 +187,17 @@ private:
 		struct RANGE {
 			int start, end;
 		};
-		XY(int ss, int ds) : src_size(ss), dest_size(ds) {}
+		XY(int ss, int ds) : src_size(ss), dest_size(ds)
+		{
+			const int c = std::gcd(dest_size, src_size);
+			sc = dest_size/c;
+			dc = src_size/c;
+		}
 		void
 		calc_range(const int &dest, RANGE *range)
 		const {
 			range->start = dest*dc;
 			range->end = (dest+1)*dc;
-		}
-		void
-		calc_params()
-		{
-			const int c = std::gcd(dest_size, src_size);
-			sc = dest_size/c;
-			dc = src_size/c;
 		}
 	};
 	void
@@ -393,12 +206,12 @@ private:
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		std::intmax_t b=0, g=0, r=0, a=0;
+		int b=0, g=0, r=0, a=0;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
 				const auto s = src[xs+(sx/x.sc)];
-				const std::intmax_t wa=static_cast<std::intmax_t>(s.a);
+				const int wa=static_cast<int>(s.a);
 				r += s.r*wa;
 				g += s.g*wa;
 				b += s.b*wa;
@@ -415,22 +228,14 @@ public:
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
-	std::intmax_t w;
+	int w;
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
-		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
-	{
-		x.calc_params();
-		y.calc_params();
-	}
+		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	void
-	invoke_interpolate(int i, const int &n_th)
+	invoke_interpolate(int dy)
 	{
-		const auto y_start = ( i*(y.dest_size) )/n_th;
-		const auto y_end = ( (i+1)*(y.dest_size) )/n_th;
-		for (auto dy=y_start; dy<y_end; dy++) {
-			for (auto dx=0; dx<(x.dest_size); dx++) {
-				interpolate(dx, dy);
-			}
+		for (auto dx=0; dx<(x.dest_size); dx++) {
+			interpolate(dx, dy);
 		}
 	}
 };
@@ -451,15 +256,14 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		auto src = std::make_unique<PIXEL_RGBA[]>(sw*sh);
 		auto dest = std::make_unique<PIXEL_RGBA[]>(dw*dh);
 		video->get_image_data(src.get());
-		auto n_th = n_th_correction(track_nth.value);
 		if (check_ave.value) {
-			auto p = std::make_unique<ResizeAa>(src.get(), sw, sh, dest.get(), dw, dh);
-			p->w = static_cast<std::intmax_t>((p->x.dc)*(p->y.dc));
-			parallel_do(ResizeAa::invoke_interpolate, p.get(), n_th);
+			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
+			it.w = (it.x.dc)*(it.y.dc);
+			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		} else {
-			auto p = std::make_unique<ResizeL3>(src.get(), sw, sh, dest.get(), dw, dh);
-			parallel_do(ResizeL3::invoke_set_weights, p.get(), n_th);
-			parallel_do(ResizeL3::invoke_interpolate, p.get(), n_th);
+			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
+			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.x.var + it.y.var);
+			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		}
 		video->set_image_data(dest.get(), dw, dh);
 		return true;
