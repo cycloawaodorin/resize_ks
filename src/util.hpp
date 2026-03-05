@@ -237,9 +237,9 @@ uc_cast(const float &x)
 }
 
 unsigned char
-uc_cast(std::intmax_t num, std::intmax_t den)
+uc_cast(int num, int den)
 {
-	std::intmax_t c = std::gcd(std::abs(num), std::abs(den));
+	auto c = std::gcd(std::abs(num), std::abs(den));
 	if ( den < 0 ) {
 		num = -num/c;
 		den = -den/c;
@@ -252,7 +252,7 @@ uc_cast(std::intmax_t num, std::intmax_t den)
 	} else if ( 255*den <= num ) {
 		return static_cast<unsigned char>(255);
 	} else {
-		std::intmax_t r = num % den;
+		int r = num % den;
 		if ( r*2 < den ) {
 			return static_cast<unsigned char>((num-r)/den);
 		} else {
