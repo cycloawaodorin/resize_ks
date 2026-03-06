@@ -8,7 +8,7 @@ class Rational {
 private:
 	std::intmax_t numerator, denominator;
 public:
-	Rational(const std::intmax_t num, const std::intmax_t &den)
+	Rational(const std::intmax_t num, const std::intmax_t den)
 	{
 		auto c = std::gcd(std::abs(num), std::abs(den));
 		if ( den < 0 ) {
