@@ -219,6 +219,7 @@ public:
 			auto lk=std::unique_lock(threads[i].mx);
 			threads[i].cv.wait(lk, [&]{ return !(threads[i].ready); });
 		}
+		func = nullptr;
 	}
 };
 
