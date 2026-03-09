@@ -2,7 +2,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <functional>
-#include <queue>
+#include <atomic>
 
 class Rational {
 private:
@@ -136,37 +136,28 @@ public:
 class ThreadPool {
 private:
 	struct Thread {
-		bool ready;
 		std::thread thread;
 		std::mutex mx;
 		std::condition_variable cv;
-		Thread() : ready(false) {}
+		bool ready=false;
 	};
 	int size;
 	bool alive;
 	std::unique_ptr<Thread[]> threads;
 	std::function<void(int)> func;
-	std::mutex gmx;
-	std::queue<int> jobs;
+	std::atomic<int> current_i;
+	int max_i;
 	void
 	listen(Thread *th)
 	{
 		while (alive) {
 			{ // ジョブが来るまで待機
 				auto lk=std::unique_lock(th->mx);
-				th->cv.wait(lk, [th]{ return th->ready; });
+				th->cv.wait(lk, [th] { return th->ready; });
 			}
-			int i; bool to_invoke=false;
-			while ( !jobs.empty() ) {
-				{ // ジョブの取り出し
-					auto lk=std::lock_guard(gmx);
-					if ( !jobs.empty() ) {
-						i = jobs.front();
-						jobs.pop();
-						to_invoke = true;
-					}
-				}
-				if ( to_invoke ) { // ジョブ実行
+			for ( int i=max_i; current_i<max_i; ) { // ジョブの取り出しと実行
+				i = current_i++;
+				if ( i < max_i ) {
 					func(i);
 				}
 			}
@@ -205,9 +196,7 @@ public:
 	parallel_do(std::function<void(int)> f, int n)
 	{
 		func = f; // ジョブ関数
-		for (int i=0; i<n; i++) {
-			jobs.push(i); // ジョブ引数をセット
-		}
+		current_i = 0; max_i = n;
 		for (auto i=0; i<size; i++) { // ワーカー起動
 			{
 				auto lk=std::lock_guard(threads[i].mx);
