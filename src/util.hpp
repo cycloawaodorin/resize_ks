@@ -2,13 +2,13 @@
 #include <mutex>
 #include <condition_variable>
 #include <functional>
-#include <queue>
+#include <atomic>
 
 class Rational {
 private:
 	std::intmax_t numerator, denominator;
 public:
-	Rational(const std::intmax_t num, const std::intmax_t &den)
+	Rational(const std::intmax_t num, const std::intmax_t den)
 	{
 		auto c = std::gcd(std::abs(num), std::abs(den));
 		if ( den < 0 ) {
@@ -136,37 +136,28 @@ public:
 class ThreadPool {
 private:
 	struct Thread {
-		bool ready;
 		std::thread thread;
 		std::mutex mx;
 		std::condition_variable cv;
-		Thread() : ready(false) {}
+		bool ready=false;
 	};
-	int size;
+	std::size_t size;
 	bool alive;
 	std::unique_ptr<Thread[]> threads;
 	std::function<void(int)> func;
-	std::mutex gmx;
-	std::queue<int> jobs;
+	std::atomic<int> current_i;
+	int max_i;
 	void
 	listen(Thread *th)
 	{
 		while (alive) {
 			{ // ジョブが来るまで待機
 				auto lk=std::unique_lock(th->mx);
-				th->cv.wait(lk, [&]{ return th->ready; });
+				th->cv.wait(lk, [th] { return th->ready; });
 			}
-			int i; bool to_invoke=false;
-			while ( !jobs.empty() ) {
-				{ // ジョブの取り出し
-					auto lk=std::lock_guard(gmx);
-					if ( !jobs.empty() ) {
-						i = jobs.front();
-						jobs.pop();
-						to_invoke = true;
-					}
-				}
-				if ( to_invoke ) { // ジョブ実行
+			for ( int i=max_i; current_i<max_i; ) { // ジョブの取り出しと実行
+				i = current_i++;
+				if ( i < max_i ) {
 					func(i);
 				}
 			}
@@ -181,15 +172,15 @@ public:
 	ThreadPool() : size(std::thread::hardware_concurrency()), alive(true)
 	{
 		threads = std::make_unique<Thread[]>(size);
-		for (auto i=0; i<size; i++) {
-			threads[i].thread = std::thread(listen, this, &threads[i]);
+		for (std::size_t i=0; i<size; i++) {
+			threads[i].thread = std::thread([this, i](){listen(&threads[i]);});
 		}
 	}
 	~ThreadPool()
 	{
 		{
 			alive = false;
-			for (auto i=0; i<size; i++) {
+			for (std::size_t i=0; i<size; i++) {
 				{
 					auto lk=std::lock_guard(threads[i].mx);
 					threads[i].ready = true;
@@ -197,7 +188,7 @@ public:
 				threads[i].cv.notify_one();
 			}
 		}
-		for (auto i=0; i<size; i++) {
+		for (std::size_t i=0; i<size; i++) {
 			threads[i].thread.join();
 		}
 	}
@@ -205,20 +196,24 @@ public:
 	parallel_do(std::function<void(int)> f, int n)
 	{
 		func = f; // ジョブ関数
-		for (int i=0; i<n; i++) {
-			jobs.push(i); // ジョブ引数をセット
-		}
-		for (auto i=0; i<size; i++) { // ワーカー起動
+		current_i = 0; max_i = n;
+		for (std::size_t i=0; i<size; i++) { // ワーカー起動
 			{
 				auto lk=std::lock_guard(threads[i].mx);
 				threads[i].ready = true;
 			}
 			threads[i].cv.notify_one();
 		}
-		for (auto i=0; i<size; i++) { // 全ワーカーの終了を待つ
+		for (std::size_t i=0; i<size; i++) { // 全ワーカーの終了を待つ
 			auto lk=std::unique_lock(threads[i].mx);
-			threads[i].cv.wait(lk, [&]{ return !(threads[i].ready); });
+			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
 		}
+		func = nullptr;
+	}
+	std::size_t
+	get_size()
+	{
+		return size;
 	}
 };
 
