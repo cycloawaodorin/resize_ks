@@ -210,6 +210,11 @@ public:
 		}
 		func = nullptr;
 	}
+	std::size_t
+	get_size()
+	{
+		return size;
+	}
 };
 
 constexpr const float PI = 3.141592653589793f;
