@@ -76,9 +76,9 @@ private:
 		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
 		XY(int ss, int ds) : src_size(ss), dest_size(ds) {}
 		void
-		calc_range(const int &dest, RANGE *range)
+		calc_range(const int &_dest, RANGE *range)
 		const {
-			range->center = reversed_scale*dest + correction;
+			range->center = reversed_scale*_dest + correction;
 			if ( extend ) {
 				range->start = static_cast<int>( range->center.ceil_eps() ) - 3;
 				range->end = static_cast<int>( range->center.floor_eps() ) + 3;
@@ -194,10 +194,10 @@ private:
 			dc = src_size/c;
 		}
 		void
-		calc_range(const int &dest, RANGE *range)
+		calc_range(const int &_dest, RANGE *range)
 		const {
-			range->start = dest*dc;
-			range->end = (dest+1)*dc;
+			range->start = _dest*dc;
+			range->end = (_dest+1)*dc;
 		}
 	};
 	void

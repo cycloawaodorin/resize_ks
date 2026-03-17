@@ -141,7 +141,7 @@ private:
 		std::condition_variable cv;
 		bool ready=false;
 	};
-	int size;
+	std::size_t size;
 	bool alive;
 	std::unique_ptr<Thread[]> threads;
 	std::function<void(int)> func;
@@ -172,15 +172,15 @@ public:
 	ThreadPool() : size(std::thread::hardware_concurrency()), alive(true)
 	{
 		threads = std::make_unique<Thread[]>(size);
-		for (auto i=0; i<size; i++) {
-			threads[i].thread = std::thread(listen, this, &threads[i]);
+		for (std::size_t i=0; i<size; i++) {
+			threads[i].thread = std::thread([this, i](){listen(&threads[i]);});
 		}
 	}
 	~ThreadPool()
 	{
 		{
 			alive = false;
-			for (auto i=0; i<size; i++) {
+			for (std::size_t i=0; i<size; i++) {
 				{
 					auto lk=std::lock_guard(threads[i].mx);
 					threads[i].ready = true;
@@ -188,7 +188,7 @@ public:
 				threads[i].cv.notify_one();
 			}
 		}
-		for (auto i=0; i<size; i++) {
+		for (std::size_t i=0; i<size; i++) {
 			threads[i].thread.join();
 		}
 	}
@@ -197,14 +197,14 @@ public:
 	{
 		func = f; // ジョブ関数
 		current_i = 0; max_i = n;
-		for (auto i=0; i<size; i++) { // ワーカー起動
+		for (std::size_t i=0; i<size; i++) { // ワーカー起動
 			{
 				auto lk=std::lock_guard(threads[i].mx);
 				threads[i].ready = true;
 			}
 			threads[i].cv.notify_one();
 		}
-		for (auto i=0; i<size; i++) { // 全ワーカーの終了を待つ
+		for (std::size_t i=0; i<size; i++) { // 全ワーカーの終了を待つ
 			auto lk=std::unique_lock(threads[i].mx);
 			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
 		}
