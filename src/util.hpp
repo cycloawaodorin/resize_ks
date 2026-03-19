@@ -1,8 +1,7 @@
 #include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <barrier>
 
 class Rational {
 private:
@@ -135,79 +134,50 @@ public:
 
 class ThreadPool {
 private:
-	struct Thread {
-		std::thread thread;
-		std::mutex mx;
-		std::condition_variable cv;
-		bool ready=false;
-	};
 	std::size_t size;
-	bool alive;
-	std::unique_ptr<Thread[]> threads;
+	std::barrier<> bar;
 	std::function<void(int)> func;
-	std::atomic<int> current_i;
-	int max_i;
+	std::atomic<int> current_i=0;
+	int max_i=0;
+	bool alive=true;
+	std::unique_ptr<std::thread[]> threads;
 	void
-	listen(Thread *th)
+	listen()
 	{
 		while (alive) {
-			{ // ジョブが来るまで待機
-				auto lk=std::unique_lock(th->mx);
-				th->cv.wait(lk, [th] { return th->ready; });
-			}
-			for ( int i=max_i; current_i<max_i; ) { // ジョブの取り出しと実行
+			bar.arrive_and_wait();
+			for ( int i=max_i; current_i<max_i; ) {
 				i = current_i++;
 				if ( i < max_i ) {
 					func(i);
 				}
 			}
-			{ // 全ジョブ完了
-				auto lk=std::lock_guard(th->mx);
-				th->ready = false;
-			}
-			th->cv.notify_one();
 		}
 	}
 public:
-	ThreadPool() : size(std::thread::hardware_concurrency()), alive(true)
+	ThreadPool(std::size_t s=std::thread::hardware_concurrency())
+		: size(s), bar(static_cast<std::ptrdiff_t>(s+1))
 	{
-		threads = std::make_unique<Thread[]>(size);
+		threads = std::make_unique<std::thread[]>(size);
 		for (std::size_t i=0; i<size; i++) {
-			threads[i].thread = std::thread([this, i](){listen(&threads[i]);});
+			threads[i] = std::thread([this](){listen();});
 		}
 	}
 	~ThreadPool()
 	{
-		{
-			alive = false;
-			for (std::size_t i=0; i<size; i++) {
-				{
-					auto lk=std::lock_guard(threads[i].mx);
-					threads[i].ready = true;
-				}
-				threads[i].cv.notify_one();
-			}
-		}
+		alive = false; max_i = 0;
+		bar.arrive_and_wait();
 		for (std::size_t i=0; i<size; i++) {
-			threads[i].thread.join();
+			threads[i].join();
 		}
 	}
 	void
 	parallel_do(std::function<void(int)> f, int n)
 	{
-		func = f; // ジョブ関数
+		func = f;
 		current_i = 0; max_i = n;
-		for (std::size_t i=0; i<size; i++) { // ワーカー起動
-			{
-				auto lk=std::lock_guard(threads[i].mx);
-				threads[i].ready = true;
-			}
-			threads[i].cv.notify_one();
-		}
-		for (std::size_t i=0; i<size; i++) { // 全ワーカーの終了を待つ
-			auto lk=std::unique_lock(threads[i].mx);
-			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
-		}
+		bar.arrive_and_wait();
+		bar.arrive_and_wait();
 		func = nullptr;
 	}
 	std::size_t
