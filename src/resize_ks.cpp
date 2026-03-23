@@ -207,15 +207,15 @@ private:
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		int b=0, g=0, r=0, a=0;
+		std::uint64_t b=0, g=0, r=0, a=0;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
-				const auto s = src[xs+(sx/x.sc)];
-				const int wa=static_cast<int>(s.a);
-				r += s.r*wa;
-				g += s.g*wa;
-				b += s.b*wa;
+				const auto s_px = &src[xs+(sx/x.sc)];
+				const auto wa=static_cast<std::uint64_t>(s_px->a);
+				r += s_px->r*wa;
+				g += s_px->g*wa;
+				b += s_px->b*wa;
 				a += wa;
 			}
 		}
@@ -229,7 +229,7 @@ public:
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
-	int w;
+	std::uint64_t w;
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	void
@@ -263,7 +263,7 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		video->get_image_data(src.get());
 		if (check_ave.value) {
 			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
-			it.w = (it.x.dc)*(it.y.dc);
+			it.w = static_cast<std::uint64_t>( (it.x.dc)*(it.y.dc) );
 			int n = static_cast<int>(TP->get_size());
 			TP->parallel_do([&it, n](int i){it.invoke_interpolate(i, n);}, n);
 		} else {

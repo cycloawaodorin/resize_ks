@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <stdexcept>
 
 class Rational {
 private:
@@ -10,6 +11,9 @@ private:
 public:
 	Rational(const std::intmax_t num, const std::intmax_t den)
 	{
+		if ( den == 0 ) {
+			throw std::invalid_argument("denominator must not be zero");
+		}
 		auto c = std::gcd(std::abs(num), std::abs(den));
 		if ( den < 0 ) {
 			numerator = -num/c;
@@ -223,32 +227,24 @@ unsigned char
 uc_cast(const float &x)
 {
 	if ( x < 0.0f || std::isnan(x) ) {
-		return static_cast<unsigned char>(0);
+		return static_cast<unsigned char>(0u);
 	} else if ( 255.0f < x ) {
-		return static_cast<unsigned char>(255);
+		return static_cast<unsigned char>(255u);
 	} else {
 		return static_cast<unsigned char>(std::round(x));
 	}
 }
 
 unsigned char
-uc_cast(int num, int den)
+uc_cast(std::uint64_t num, std::uint64_t den)
 {
-	auto c = std::gcd(std::abs(num), std::abs(den));
-	if ( den < 0 ) {
-		num = -num/c;
-		den = -den/c;
+	if ( num == 0u ) {
+		return static_cast<unsigned char>(0u);
+	} else if ( 255u*den <= num ) {
+		return static_cast<unsigned char>(255u);
 	} else {
-		num = num/c;
-		den = den/c;
-	}
-	if ( num <= 0 ) {
-		return static_cast<unsigned char>(0);
-	} else if ( 255*den <= num ) {
-		return static_cast<unsigned char>(255);
-	} else {
-		int r = num % den;
-		if ( r*2 < den ) {
+		auto r = num % den;
+		if ( r*2u < den ) {
 			return static_cast<unsigned char>((num-r)/den);
 		} else {
 			return static_cast<unsigned char>((num-r)/den+1);
