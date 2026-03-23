@@ -227,24 +227,24 @@ unsigned char
 uc_cast(const float &x)
 {
 	if ( x < 0.0f || std::isnan(x) ) {
-		return static_cast<unsigned char>(0);
+		return static_cast<unsigned char>(0u);
 	} else if ( 255.0f < x ) {
-		return static_cast<unsigned char>(255);
+		return static_cast<unsigned char>(255u);
 	} else {
 		return static_cast<unsigned char>(std::round(x));
 	}
 }
 
 unsigned char
-uc_cast(int num, int den)
+uc_cast(std::uint64_t num, std::uint64_t den)
 {
-	if ( num <= 0 ) {
-		return static_cast<unsigned char>(0);
-	} else if ( 255*den <= num ) {
-		return static_cast<unsigned char>(255);
+	if ( num == 0u ) {
+		return static_cast<unsigned char>(0u);
+	} else if ( 255u*den <= num ) {
+		return static_cast<unsigned char>(255u);
 	} else {
-		int r = num % den;
-		if ( r*2 < den ) {
+		auto r = num % den;
+		if ( r*2u < den ) {
 			return static_cast<unsigned char>((num-r)/den);
 		} else {
 			return static_cast<unsigned char>((num-r)/den+1);
