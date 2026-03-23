@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <stdexcept>
 
 class Rational {
 private:
@@ -10,6 +11,9 @@ private:
 public:
 	Rational(const std::intmax_t num, const std::intmax_t den)
 	{
+		if ( den == 0 ) {
+			throw std::invalid_argument("denominator must not be zero");
+		}
 		auto c = std::gcd(std::abs(num), std::abs(den));
 		if ( den < 0 ) {
 			numerator = -num/c;
@@ -234,14 +238,6 @@ uc_cast(const float &x)
 unsigned char
 uc_cast(int num, int den)
 {
-	auto c = std::gcd(std::abs(num), std::abs(den));
-	if ( den < 0 ) {
-		num = -num/c;
-		den = -den/c;
-	} else {
-		num = num/c;
-		den = den/c;
-	}
 	if ( num <= 0 ) {
 		return static_cast<unsigned char>(0);
 	} else if ( 255*den <= num ) {
