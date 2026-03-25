@@ -108,7 +108,7 @@ private:
 		void
 		set_weights(const int i)
 		{
-			const Rational c = reversed_scale*i + correction;
+			const Rational c = reversed_scale*i + correction; // reversed_scale*(i+1/2)-1/2
 			std::intmax_t s, e;
 			if ( extend ) {
 				s = c.ceil_eps() - 3;
@@ -212,7 +212,7 @@ private:
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
 				const auto s_px = &src[xs+(sx/x.sc)];
-				const auto wa=static_cast<std::uint64_t>(s_px->a);
+				const std::uint64_t wa = s_px->a;
 				r += s_px->r*wa;
 				g += s_px->g*wa;
 				b += s_px->b*wa;

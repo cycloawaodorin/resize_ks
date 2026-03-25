@@ -1,5 +1,5 @@
 CXX = clang
-CXXWFLAGS = -Wall -Wextra -Wdeprecated-declarations -Wpointer-arith -Wwrite-strings -Wmissing-noreturn -Wno-unused-parameter -Wunused-variable -Winit-self -Wshadow -Wconversion -Wold-style-cast
+CXXWFLAGS = -Wall -Wextra -Wdeprecated -Wpointer-arith -Wwrite-strings -Wmissing-noreturn -Wno-unused-parameter -Wunused-variable -Winit-self -Wshadow -Wconversion -Wold-style-cast
 CXXFLAGS = -c -O3 -std=c++23
 INCLUDES = 
 LD = clang
