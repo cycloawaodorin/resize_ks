@@ -125,18 +125,16 @@ private:
 		}
 	};
 	void
-	interpolate(const int &dx, const int dy)
+	interpolate(const int dx, const int dy, XY::RANGE *yrange)
 	{
-		XY::RANGE xrange, yrange;
-		x.calc_range(dx, &xrange);
-		y.calc_range(dy, &yrange);
+		auto xrange = &xranges[static_cast<std::size_t>(dx)];
 		float b=0.0f, g=0.0f, r=0.0f, a=0.0f, w=0.0f;
 		const auto *wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
 		const auto *wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
-		for ( auto sy=(yrange.start); sy<=(yrange.end); sy++ ) {
-			const auto wy = wys[sy-(yrange.start)+(yrange.skipped)];
-			for ( auto sx=(xrange.start); sx<=(xrange.end); sx++ ) {
-				const auto wxy = wy*wxs[sx-(xrange.start)+(xrange.skipped)];
+		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
+			const auto wy = wys[sy-(yrange->start)+(yrange->skipped)];
+			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
+				const auto wxy = wy*wxs[sx-(xrange->start)+(xrange->skipped)];
 				const auto s_px = &src[sy*(x.src_size)+sx];
 				const auto wxya = wxy*s_px->a;
 				r += s_px->r*wxya;
@@ -156,6 +154,7 @@ public:
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
+	std::unique_ptr<XY::RANGE[]> xranges;
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
 	{
@@ -172,10 +171,17 @@ public:
 		}
 	}
 	void
+	invoke_calc_xranges(int i)
+	{
+		x.calc_range(i, &xranges[static_cast<std::size_t>(i)]);
+	}
+	void
 	invoke_interpolate(int dy)
 	{
+		XY::RANGE yrange;
+		y.calc_range(dy, &yrange);
 		for (auto dx=0; dx<(x.dest_size); dx++) {
-			interpolate(dx, dy);
+			interpolate(dx, dy, &yrange);
 		}
 	}
 };
@@ -195,14 +201,14 @@ private:
 			dc = src_size/c;
 		}
 		void
-		calc_range(const int &_dest, RANGE *range)
+		calc_range(const int _dest, RANGE *range)
 		const {
 			range->start = _dest*dc;
 			range->end = (_dest+1)*dc;
 		}
 	};
 	void
-	interpolate(const int &dx, const int &dy)
+	interpolate(const int dx, const int dy)
 	{
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
@@ -233,7 +239,7 @@ public:
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	void
-	invoke_interpolate(int i, const int &n_th)
+	invoke_interpolate(int i, const int n_th)
 	{
 		const int y_start = ( i*(y.dest_size) )/n_th;
 		const int y_end = ( (i+1)*(y.dest_size) )/n_th;
@@ -269,6 +275,7 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
 			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.x.var + it.y.var);
+			TP->parallel_do([&it](int i){it.invoke_calc_xranges(i);}, it.x.dest_size);
 			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		}
 		video->set_image_data(dest.get(), dw, dh);
