@@ -74,11 +74,16 @@ private:
 		bool extend;
 		Rational reversed_scale, correction, weight_scale;
 		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
-		XY(int ss, int ds) : src_size(ss), dest_size(ds) {}
+		std::unique_ptr<RANGE[]> ranges;
+		XY(int ss, int ds) : src_size(ss), dest_size(ds)
+		{
+			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
+		}
 		void
-		calc_range(const int &_dest, RANGE *range)
-		const {
-			range->center = reversed_scale*_dest + correction;
+		calc_range(int xy)
+		{
+			auto range = &ranges[static_cast<std::size_t>(xy)];
+			range->center = reversed_scale*xy + correction;
 			if ( extend ) {
 				range->start = static_cast<int>( range->center.ceil_eps() ) - 3;
 				range->end = static_cast<int>( range->center.floor_eps() ) + 3;
@@ -106,7 +111,7 @@ private:
 			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
 		}
 		void
-		set_weights(const int i)
+		set_weights(int i)
 		{
 			const Rational c = reversed_scale*i + correction; // reversed_scale*(i+1/2)-1/2
 			std::intmax_t s, e;
@@ -125,18 +130,17 @@ private:
 		}
 	};
 	void
-	interpolate(const int &dx, const int dy)
+	interpolate(int dx, int dy)
 	{
-		XY::RANGE xrange, yrange;
-		x.calc_range(dx, &xrange);
-		y.calc_range(dy, &yrange);
+		auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
+		auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
 		float b=0.0f, g=0.0f, r=0.0f, a=0.0f, w=0.0f;
 		const auto *wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
 		const auto *wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
-		for ( auto sy=(yrange.start); sy<=(yrange.end); sy++ ) {
-			const auto wy = wys[sy-(yrange.start)+(yrange.skipped)];
-			for ( auto sx=(xrange.start); sx<=(xrange.end); sx++ ) {
-				const auto wxy = wy*wxs[sx-(xrange.start)+(xrange.skipped)];
+		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
+			const auto wy = wys[sy-(yrange->start)+(yrange->skipped)];
+			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
+				const auto wxy = wy*wxs[sx-(xrange->start)+(xrange->skipped)];
 				const auto s_px = &src[sy*(x.src_size)+sx];
 				const auto wxya = wxy*s_px->a;
 				r += s_px->r*wxya;
@@ -172,6 +176,15 @@ public:
 		}
 	}
 	void
+	invoke_calc_range(int i)
+	{
+		if ( i < x.dest_size ) {
+			x.calc_range(i);
+		} else {
+			y.calc_range(i-x.dest_size);
+		}
+	}
+	void
 	invoke_interpolate(int dy)
 	{
 		for (auto dx=0; dx<(x.dest_size); dx++) {
@@ -195,14 +208,14 @@ private:
 			dc = src_size/c;
 		}
 		void
-		calc_range(const int &_dest, RANGE *range)
+		calc_range(const int xy, RANGE *range)
 		const {
-			range->start = _dest*dc;
-			range->end = (_dest+1)*dc;
+			range->start = xy*dc;
+			range->end = (xy+1)*dc;
 		}
 	};
 	void
-	interpolate(const int &dx, const int &dy)
+	interpolate(int dx, int dy)
 	{
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
@@ -233,7 +246,7 @@ public:
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	void
-	invoke_interpolate(int i, const int &n_th)
+	invoke_interpolate(int i, int n_th)
 	{
 		const int y_start = ( i*(y.dest_size) )/n_th;
 		const int y_end = ( (i+1)*(y.dest_size) )/n_th;
@@ -269,6 +282,7 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
 			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.x.var + it.y.var);
+			TP->parallel_do([&it](int i){it.invoke_calc_range(i);}, it.x.dest_size + it.y.dest_size);
 			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		}
 		video->set_image_data(dest.get(), dw, dh);
