@@ -44,7 +44,7 @@ InitializePlugin(DWORD version)
 EXTERN_C void
 UninitializePlugin()
 {
-	TP.reset(nullptr);
+	TP = nullptr;
 }
 
 class ResizeL3 {
@@ -69,26 +69,20 @@ private:
 		{
 			return sinc(PI*x)*sinc((PI/3.0f)*x);
 		}
-		void
-		calc_params()
-		{
-			reversed_scale = Rational(src_size, dest_size);
-			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
-			correction = (reversed_scale-1)/2;
-			weight_scale = extend ? Rational(1) : reversed_scale.reciprocal();
-			var = dest_size / std::gcd(dest_size, src_size);
-			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
-		}
 	public:
 		int src_size, dest_size, var;
 		bool extend;
 		Rational reversed_scale, correction, weight_scale;
 		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
 		std::unique_ptr<RANGE[]> ranges;
-		XY(int ss, int ds) : src_size(ss), dest_size(ds)
+		XY(int ss, int ds) : src_size(ss), dest_size(ds), reversed_scale(src_size, dest_size)
 		{
+			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
+			correction = (reversed_scale-1)/2;
+			weight_scale = extend ? Rational(1) : reversed_scale.reciprocal();
+			var = dest_size / std::gcd(dest_size, src_size);
+			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
 			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
-			calc_params();
 		}
 		void
 		calc_range(int xy)
