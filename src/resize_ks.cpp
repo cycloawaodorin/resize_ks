@@ -69,6 +69,16 @@ private:
 		{
 			return sinc(PI*x)*sinc((PI/3.0f)*x);
 		}
+		void
+		calc_params()
+		{
+			reversed_scale = Rational(src_size, dest_size);
+			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
+			correction = (reversed_scale-1)/2;
+			weight_scale = extend ? Rational(1) : reversed_scale.reciprocal();
+			var = dest_size / std::gcd(dest_size, src_size);
+			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
+		}
 	public:
 		int src_size, dest_size, var;
 		bool extend;
@@ -78,6 +88,7 @@ private:
 		XY(int ss, int ds) : src_size(ss), dest_size(ds)
 		{
 			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
+			calc_params();
 		}
 		void
 		calc_range(int xy)
@@ -101,16 +112,6 @@ private:
 			}
 		}
 		void
-		calc_params()
-		{
-			reversed_scale = Rational(src_size, dest_size);
-			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
-			correction = (reversed_scale-1)/2;
-			weight_scale = extend ? Rational(1) : reversed_scale.reciprocal();
-			var = dest_size / std::gcd(dest_size, src_size);
-			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
-		}
-		void
 		set_weights(int i)
 		{
 			const Rational c = reversed_scale*i + correction; // reversed_scale*(i+1/2)-1/2
@@ -129,6 +130,9 @@ private:
 			}
 		}
 	};
+	const PIXEL_RGBA *src;
+	PIXEL_RGBA *dest;
+	XY x, y;
 	void
 	interpolate(int dx, int dy)
 	{
@@ -157,14 +161,22 @@ private:
 		d_px->a = uc_cast(a/w);
 	}
 public:
-	const PIXEL_RGBA *src;
-	PIXEL_RGBA *dest;
-	XY x, y;
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
-		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
+		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
+	int
+	var_size()
 	{
-		x.calc_params();
-		y.calc_params();
+		return x.var + y.var;
+	}
+	int
+	dest_sum()
+	{
+		return x.dest_size + y.dest_size;
+	}
+	int
+	dest_height()
+	{
+		return y.dest_size;
 	}
 	void
 	invoke_set_weights(int i)
@@ -214,18 +226,22 @@ private:
 			range->end = (xy+1)*dc;
 		}
 	};
+	const PIXEL_RGBA *src;
+	PIXEL_RGBA *dest;
+	XY x, y;
+	std::int64_t w;
 	void
 	interpolate(int dx, int dy)
 	{
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		std::uint64_t b=0u, g=0u, r=0u, a=0u;
+		std::int64_t b=0, g=0, r=0, a=0;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
 				const auto s_px = &src[xs+(sx/x.sc)];
-				const auto wa = static_cast<std::uint64_t>(s_px->a);
+				const auto wa = static_cast<std::int64_t>(s_px->a);
 				r += s_px->r*wa;
 				g += s_px->g*wa;
 				b += s_px->b*wa;
@@ -239,12 +255,13 @@ private:
 		d_px->a = uc_cast(a, w);
 	}
 public:
-	const PIXEL_RGBA *src;
-	PIXEL_RGBA *dest;
-	XY x, y;
-	std::uint64_t w;
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
-		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
+		: src(_src), dest(_dest), x(sw, dw), y(sh, dh), w(dw*dh) {}
+	int
+	dest_height()
+	{
+		return y.dest_size;
+	}
 	void
 	invoke_interpolate(int dy)
 	{
@@ -272,13 +289,12 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		video->get_image_data(src.get());
 		if (check_ave.value) {
 			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
-			it.w = static_cast<std::uint64_t>( (it.x.dc)*(it.y.dc) );
-			TP->parallel_do_batched([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
+			TP->parallel_do_batched([&it](int i){it.invoke_interpolate(i);}, it.dest_height());
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.x.var + it.y.var);
-			TP->parallel_do_batched([&it](int i){it.invoke_calc_range(i);}, it.x.dest_size + it.y.dest_size);
-			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
+			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.var_size());
+			TP->parallel_do_batched([&it](int i){it.invoke_calc_range(i);}, it.dest_sum());
+			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.dest_height());
 		}
 		video->set_image_data(dest.get(), dw, dh);
 		return true;
