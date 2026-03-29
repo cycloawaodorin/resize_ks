@@ -220,10 +220,16 @@ public:
 		}
 		func = nullptr;
 	}
-	std::size_t
-	get_size()
+	void
+	parallel_do_batched(std::function<void(int)> f, int n)
 	{
-		return size;
+		const int m = static_cast<int>(size);
+		parallel_do( [&f, n, m](int i){
+			const int s=(i*n)/m, e=((i+1)*n)/m;
+			for (auto j=s; j<e; j++) {
+				f(j);
+			}
+		}, n );
 	}
 };
 

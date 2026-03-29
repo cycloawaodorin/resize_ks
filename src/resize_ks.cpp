@@ -132,11 +132,11 @@ private:
 	void
 	interpolate(int dx, int dy)
 	{
-		auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
-		auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
+		const auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
+		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
 		float b=0.0f, g=0.0f, r=0.0f, a=0.0f, w=0.0f;
-		const auto *wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
-		const auto *wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
+		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
+		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
 		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
 			const auto wy = wys[sy-(yrange->start)+(yrange->skipped)];
 			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
@@ -220,12 +220,12 @@ private:
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		std::uint64_t b=0, g=0, r=0, a=0;
+		std::uint64_t b=0u, g=0u, r=0u, a=0u;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
 				const auto s_px = &src[xs+(sx/x.sc)];
-				const std::uint64_t wa = s_px->a;
+				const auto wa = static_cast<std::uint64_t>(s_px->a);
 				r += s_px->r*wa;
 				g += s_px->g*wa;
 				b += s_px->b*wa;
@@ -246,14 +246,10 @@ public:
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	void
-	invoke_interpolate(int i, int n_th)
+	invoke_interpolate(int dy)
 	{
-		const int y_start = ( i*(y.dest_size) )/n_th;
-		const int y_end = ( (i+1)*(y.dest_size) )/n_th;
-		for (int dy=y_start; dy<y_end; dy++) {
-			for (int dx=0; dx<(x.dest_size); dx++) {
-				interpolate(dx, dy);
-			}
+		for (int dx=0; dx<(x.dest_size); dx++) {
+			interpolate(dx, dy);
 		}
 	}
 };
@@ -277,12 +273,11 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		if (check_ave.value) {
 			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
 			it.w = static_cast<std::uint64_t>( (it.x.dc)*(it.y.dc) );
-			int n = static_cast<int>(TP->get_size());
-			TP->parallel_do([&it, n](int i){it.invoke_interpolate(i, n);}, n);
+			TP->parallel_do_batched([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
 			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.x.var + it.y.var);
-			TP->parallel_do([&it](int i){it.invoke_calc_range(i);}, it.x.dest_size + it.y.dest_size);
+			TP->parallel_do_batched([&it](int i){it.invoke_calc_range(i);}, it.x.dest_size + it.y.dest_size);
 			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.y.dest_size);
 		}
 		video->set_image_data(dest.get(), dw, dh);
