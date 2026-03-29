@@ -51,8 +51,12 @@ class ResizeL3 {
 private:
 	class XY {
 	private:
+		struct RANGE {
+			int start, end, skipped;
+			Rational center;
+		};
 		static float
-		sinc(const float &x)
+		sinc(float x)
 		{
 			if ( x == 0.0f ) {
 				return 1.0f;
@@ -61,15 +65,11 @@ private:
 			}
 		}
 		static float
-		lanczos3(const float &x)
+		lanczos3(float x)
 		{
 			return sinc(PI*x)*sinc((PI/3.0f)*x);
 		}
 	public:
-		struct RANGE {
-			int start, end, skipped;
-			Rational center;
-		};
 		int src_size, dest_size, var;
 		bool extend;
 		Rational reversed_scale, correction, weight_scale;
