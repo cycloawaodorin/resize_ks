@@ -157,17 +157,17 @@ private:
 public:
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
-	int
+	inline int
 	var_size()
 	{
 		return x.var + y.var;
 	}
-	int
+	inline int
 	dest_sum()
 	{
 		return x.dest_size + y.dest_size;
 	}
-	int
+	inline int
 	dest_height()
 	{
 		return y.dest_size;
