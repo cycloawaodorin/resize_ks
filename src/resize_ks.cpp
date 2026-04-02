@@ -141,9 +141,9 @@ private:
 				const auto wxy = wy*wxs[sx-(xrange->start)+(xrange->skipped)];
 				const auto s_px = &src[sy*(x.src_size)+sx];
 				const auto wxya = wxy*s_px->a;
-				r += s_px->r*wxya;
-				g += s_px->g*wxya;
-				b += s_px->b*wxya;
+				r = std::fmaf(s_px->r, wxya, r);
+				g = std::fmaf(s_px->g, wxya, g);
+				b = std::fmaf(s_px->b, wxya, b);
 				a += wxya;
 				w += wxy;
 			}
@@ -271,11 +271,11 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 	const int sw=video->object->width, sh=video->object->height;
 	int dw, dh;
 	if (check_dot.value) {
-		dw = static_cast<int>(std::round(track_width.value));
-		dh = static_cast<int>(std::round(track_height.value));
+		dw = std::lrint(track_width.value);
+		dh = std::lrint(track_height.value);
 	} else {
-		dw = static_cast<int>(std::round(sw*(track_mag.value)*(track_width.value)*1e-4));
-		dh = static_cast<int>(std::round(sh*(track_mag.value)*(track_height.value)*1e-4));
+		dw = std::lrint(sw*(track_mag.value)*(track_width.value)*1e-4);
+		dh = std::lrint(sh*(track_mag.value)*(track_height.value)*1e-4);
 	}
 	if ( ( 0 < sw ) && ( 0 < sh ) && ( 0 < dw ) && ( 0 < dh ) ) {
 		auto src = std::make_unique<PIXEL_RGBA[]>(static_cast<std::size_t>(sw*sh));
