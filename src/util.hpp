@@ -236,7 +236,7 @@ public:
 constexpr const float PI = 3.141592653589793f;
 
 unsigned char
-uc_cast(const float &x)
+uc_cast(float x)
 {
 	if ( x < 0.0f || std::isnan(x) ) {
 		return static_cast<unsigned char>(0u);
@@ -260,7 +260,7 @@ uc_cast(std::int64_t num, std::int64_t den)
 			return static_cast<unsigned char>((num-r)/den);
 		} else if ( r*2 == den ) {
 			r = (num-r)/den;
-			if ( r%2 == 0 ) {
+			if ( (r&1) == 0 ) {
 				return static_cast<unsigned char>(r);
 			} else {
 				return static_cast<unsigned char>(r+1);
