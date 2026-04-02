@@ -78,8 +78,8 @@ private:
 		XY(int ss, int ds) : src_size(ss), dest_size(ds), reversed_scale(src_size, dest_size)
 		{
 			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
-			correction = (reversed_scale-1)/2;
-			weight_scale = extend ? Rational(1) : reversed_scale.reciprocal();
+			correction = (reversed_scale-1ll)/2ll;
+			weight_scale = extend ? Rational(1ll) : reversed_scale.reciprocal();
 			var = dest_size / std::gcd(dest_size, src_size);
 			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
 			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
@@ -93,8 +93,8 @@ private:
 				range->start = static_cast<int>( range->center.ceil_eps() ) - 3;
 				range->end = static_cast<int>( range->center.floor_eps() ) + 3;
 			} else {
-				range->start = static_cast<int>( ( range->center - reversed_scale*3 ).ceil_eps() );
-				range->end = static_cast<int>( ( range->center + reversed_scale*3 ).floor_eps() );
+				range->start = static_cast<int>( ( range->center - reversed_scale*3ll ).ceil_eps() );
+				range->end = static_cast<int>( ( range->center + reversed_scale*3ll ).floor_eps() );
 			}
 			range->skipped = 0;
 			if ( range->start < 0 ) {
@@ -111,14 +111,14 @@ private:
 			const Rational c = reversed_scale*i + correction; // reversed_scale*(i+1/2)-1/2
 			std::intmax_t s, e;
 			if ( extend ) {
-				s = c.ceil_eps() - 3;
-				e = c.floor_eps() + 3;
+				s = c.ceil_eps() - 3ll;
+				e = c.floor_eps() + 3ll;
 			} else {
-				s = ( c - reversed_scale*3 ).ceil_eps();
-				e = ( c + reversed_scale*3 ).floor_eps();
+				s = ( c - reversed_scale*3ll ).ceil_eps();
+				e = ( c + reversed_scale*3ll ).floor_eps();
 			}
 			auto j = static_cast<std::size_t>(i);
-			weights[j] = std::make_unique<float[]>(static_cast<std::size_t>(e-s+1));
+			weights[j] = std::make_unique<float[]>(static_cast<std::size_t>(e-s+1ll));
 			for ( auto sxy = s; sxy <= e; sxy++ ) {
 				weights[j][static_cast<std::size_t>(sxy-s)] = lanczos3( ((c-sxy)*weight_scale).to_float() );
 			}
@@ -230,7 +230,7 @@ private:
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		std::int64_t b=0, g=0, r=0, a=0;
+		std::int64_t b=0ll, g=0ll, r=0ll, a=0ll;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
@@ -259,7 +259,7 @@ public:
 	void
 	invoke_interpolate(int dy)
 	{
-		for (int dx=0; dx<(x.dest_size); dx++) {
+		for (auto dx=0; dx<(x.dest_size); dx++) {
 			interpolate(dx, dy);
 		}
 	}
@@ -283,12 +283,12 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		video->get_image_data(src.get());
 		if (check_ave.value) {
 			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do_batched([&it](int i){it.invoke_interpolate(i);}, it.dest_height());
+			TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do([&it](int i){it.invoke_set_weights(i);}, it.var_size());
-			TP->parallel_do_batched([&it](int i){it.invoke_calc_range(i);}, it.dest_sum());
-			TP->parallel_do([&it](int i){it.invoke_interpolate(i);}, it.dest_height());
+			TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
+			TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
+			TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		}
 		video->set_image_data(dest.get(), dw, dh);
 		return true;

@@ -11,11 +11,11 @@ private:
 public:
 	Rational(const std::intmax_t num, const std::intmax_t den)
 	{
-		if ( den == 0 ) {
+		if ( den == 0ll ) {
 			throw std::invalid_argument("denominator must not be zero");
 		}
 		auto c = std::gcd(std::abs(num), std::abs(den));
-		if ( den < 0 ) {
+		if ( den < 0ll ) {
 			numerator = -num/c;
 			denominator = -den/c;
 		} else {
@@ -23,8 +23,8 @@ public:
 			denominator = den/c;
 		}
 	}
-	Rational(const std::intmax_t i) : numerator(i), denominator(1) {}
-	Rational() : numerator(0), denominator(1) {}
+	Rational(const std::intmax_t i) : numerator(i), denominator(1ll) {}
+	Rational() : numerator(0ll), denominator(1ll) {}
 	std::intmax_t
 	get_numerator()
 	const {
@@ -75,7 +75,7 @@ public:
 	Rational
 	operator /(const Rational &other)
 	const {
-		if ( other.numerator == 0 ) {
+		if ( other.numerator == 0ll ) {
 			throw std::invalid_argument("divisor must not be zero");
 		}
 		const auto ca = std::gcd(std::abs(numerator), std::abs(other.numerator));
@@ -85,7 +85,7 @@ public:
 	Rational
 	operator /(const std::intmax_t &other)
 	const {
-		if ( other == 0 ) {
+		if ( other == 0ll ) {
 			throw std::invalid_argument("divisor must not be zero");
 		}
 		const auto c = std::gcd(std::abs(numerator), std::abs(other));
@@ -100,8 +100,8 @@ public:
 	floor()
 	const {
 		const auto r = numerator % denominator;
-		if ( r < 0 ) {
-			return ( (numerator-r)/denominator - 1 );
+		if ( r < 0ll ) {
+			return ( (numerator-r)/denominator - 1ll );
 		} else {
 			return ( (numerator-r)/denominator );
 		}
@@ -110,8 +110,8 @@ public:
 	floor_eps()
 	const {
 		const auto r = numerator % denominator;
-		if ( r <= 0 ) {
-			return ( (numerator-r)/denominator - 1 );
+		if ( r <= 0ll ) {
+			return ( (numerator-r)/denominator - 1ll );
 		} else {
 			return ( (numerator-r)/denominator );
 		}
@@ -120,20 +120,20 @@ public:
 	ceil()
 	const {
 		const auto r = numerator % denominator;
-		if ( r <= 0 ) {
+		if ( r <= 0ll ) {
 			return ( (numerator-r)/denominator );
 		} else {
-			return ( (numerator-r)/denominator + 1 );
+			return ( (numerator-r)/denominator + 1ll );
 		}
 	}
 	std::intmax_t
 	ceil_eps()
 	const {
 		const auto r = numerator % denominator;
-		if ( r < 0 ) {
+		if ( r < 0ll ) {
 			return ( (numerator-r)/denominator );
 		} else {
-			return ( (numerator-r)/denominator + 1 );
+			return ( (numerator-r)/denominator + 1ll );
 		}
 	}
 	float
@@ -250,23 +250,23 @@ uc_cast(float x)
 unsigned char
 uc_cast(std::int64_t num, std::int64_t den)
 {
-	if ( num <= 0 ) {
+	if ( num <= 0ll ) {
 		return static_cast<unsigned char>(0u);
-	} else if ( 255*den <= num ) {
+	} else if ( 255ll*den <= num ) {
 		return static_cast<unsigned char>(255u);
 	} else {
 		auto r = num % den;
-		if ( r*2 < den ) {
+		if ( r*2ll < den ) {
 			return static_cast<unsigned char>((num-r)/den);
-		} else if ( r*2 == den ) {
+		} else if ( r*2ll == den ) {
 			r = (num-r)/den;
-			if ( (r&1) == 0 ) {
+			if ( (r&1ll) == 0ll ) {
 				return static_cast<unsigned char>(r);
 			} else {
-				return static_cast<unsigned char>(r+1);
+				return static_cast<unsigned char>(r+1ll);
 			}
 		} else {
-			return static_cast<unsigned char>((num-r)/den+1);
+			return static_cast<unsigned char>((num-r)/den+1ll);
 		}
 	}
 }
