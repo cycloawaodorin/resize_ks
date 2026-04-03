@@ -230,7 +230,7 @@ private:
 		XY::RANGE xrange, yrange;
 		x.calc_range(dx, &xrange);
 		y.calc_range(dy, &yrange);
-		std::int64_t b=0ll, g=0ll, r=0ll, a=0ll;
+		std::int64_t r=0ll, g=0ll, b=0ll, a=0ll;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
 			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
@@ -250,8 +250,11 @@ private:
 	}
 public:
 	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
-		: src(_src), dest(_dest), x(sw, dw), y(sh, dh), w(dw*dh) {}
-	int
+		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
+	{
+		w = x.dc*y.dc;
+	}
+	inline int
 	dest_height()
 	{
 		return y.dest_size;
@@ -286,10 +289,11 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 			TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
+			TP->parallel_do_batched([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
 			TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
 			TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		}
+		src = nullptr;
 		video->set_image_data(dest.get(), dw, dh);
 		return true;
 	} else {
