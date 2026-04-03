@@ -289,7 +289,7 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 			TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		} else {
 			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do_batched([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
+			TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
 			TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
 			TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 		}

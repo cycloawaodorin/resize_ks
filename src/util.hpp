@@ -19,7 +19,6 @@ debug_print(std::wformat_string<Args...> fmt, Args&&... args)
 	OutputDebugStringW(std::format(fmt, std::forward<Args>(args)...).c_str());
 }
 
-
 class Rational {
 private:
 	std::intmax_t numerator, denominator;
