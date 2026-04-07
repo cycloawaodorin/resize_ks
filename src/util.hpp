@@ -4,20 +4,6 @@
 #include <functional>
 #include <atomic>
 #include <stdexcept>
-#include <format>
-
-void
-debug_print(std::wstring_view wstr)
-{
-    OutputDebugStringW(wstr.data());
-}
-
-template<typename... Args>
-void
-debug_print(std::wformat_string<Args...> fmt, Args&&... args)
-{
-	OutputDebugStringW(std::format(fmt, std::forward<Args>(args)...).c_str());
-}
 
 class Rational {
 private:
@@ -166,11 +152,11 @@ private:
 		bool ready=false;
 	};
 	std::size_t size;
-	bool alive;
+	bool alive=true;
 	std::unique_ptr<Thread[]> threads;
 	std::function<void(int)> func;
-	std::atomic<int> current_i;
-	int max_i;
+	std::atomic<int> current_i=0;
+	int max_i=0;
 	void
 	listen(Thread *th)
 	{
@@ -193,7 +179,7 @@ private:
 		}
 	}
 public:
-	ThreadPool() : size(std::thread::hardware_concurrency()), alive(true), current_i(0), max_i(0)
+	ThreadPool(std::size_t s=std::thread::hardware_concurrency()) : size(s)
 	{
 		threads = std::make_unique<Thread[]>(size);
 		for (auto i=0uz; i<size; i++) {
