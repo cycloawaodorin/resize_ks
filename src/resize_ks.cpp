@@ -1,7 +1,6 @@
 ﻿#include <Windows.h>
 #include <cmath>
 #include <numeric>
-#include <format>
 #include "util.hpp"
 #include "filter2.hpp"
 #include "version.hpp"
@@ -299,7 +298,9 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 			int size = MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, nullptr, 0);
 			std::wstring what(static_cast<std::size_t>(size-1), L'\0');
 			MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, what.data(), size);
-			auto wstr = std::format(L"以下のエラーが発生しました．バグの可能性が高いため， 詳しい状況を報告いただけると助かります．\nエラー内容: {}\n報告先: https://github.com/cycloawaodorin/resize_ks/issues", what);
+			std::wstring wstr = L"以下のエラーが発生しました．バグの可能性が高いため， 詳しい状況を報告いただけると助かります．\nエラー内容: ";
+			wstr += what;
+			wstr += L"\n報告先: https://github.com/cycloawaodorin/resize_ks/issues";
 			MessageBoxW(GetActiveWindow(), wstr.c_str(), nullptr, MB_OK);
 			return false;
 		}
