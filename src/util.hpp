@@ -3,22 +3,8 @@
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <exception>
 #include <stdexcept>
-#include <format>
-
-void
-debug_print(std::wstring_view wstr)
-{
-    OutputDebugStringW(wstr.data());
-}
-
-template<typename... Args>
-void
-debug_print(std::wformat_string<Args...> fmt, Args&&... args)
-{
-	OutputDebugStringW(std::format(fmt, std::forward<Args>(args)...).c_str());
-}
-
 
 class Rational {
 private:
@@ -167,11 +153,12 @@ private:
 		bool ready=false;
 	};
 	std::size_t size;
-	bool alive;
+	bool alive=true;
 	std::unique_ptr<Thread[]> threads;
 	std::function<void(int)> func;
-	std::atomic<int> current_i;
-	int max_i;
+	std::atomic<int> current_i=0;
+	int max_i=0;
+	std::exception_ptr ep;
 	void
 	listen(Thread *th)
 	{
@@ -182,8 +169,13 @@ private:
 			}
 			for ( int i=max_i; current_i<max_i; ) { // ジョブの取り出しと実行
 				i = current_i++;
-				if ( i < max_i ) {
-					func(i);
+				try {
+					if ( i < max_i ) {
+						func(i);
+					}
+				} catch (...) { // func からの例外を捕捉
+					ep = std::current_exception();
+					current_i = max_i;
 				}
 			}
 			{ // 全ジョブ完了
@@ -194,7 +186,7 @@ private:
 		}
 	}
 public:
-	ThreadPool() : size(std::thread::hardware_concurrency()), alive(true), current_i(0), max_i(0)
+	ThreadPool() : size(std::thread::hardware_concurrency())
 	{
 		threads = std::make_unique<Thread[]>(size);
 		for (auto i=0uz; i<size; i++) {
@@ -234,6 +226,9 @@ public:
 			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
 		}
 		func = nullptr;
+		if ( ep ) {
+			std::rethrow_exception(std::exchange(ep, nullptr));
+		}
 	}
 	void
 	parallel_do_batched(std::function<void(int)> f, int n)
