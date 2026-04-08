@@ -1,6 +1,7 @@
 ﻿#include <Windows.h>
 #include <cmath>
 #include <numeric>
+#include <format>
 #include "util.hpp"
 #include "filter2.hpp"
 #include "version.hpp"
@@ -284,14 +285,23 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 		auto src = std::make_unique<PIXEL_RGBA[]>(static_cast<std::size_t>(sw*sh));
 		auto dest = std::make_unique<PIXEL_RGBA[]>(static_cast<std::size_t>(dw*dh));
 		video->get_image_data(src.get());
-		if (check_ave.value) {
-			ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
-		} else {
-			ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
-			TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
-			TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
-			TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
+		try {
+			if (check_ave.value) {
+				ResizeAa it(src.get(), sw, sh, dest.get(), dw, dh);
+				TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
+			} else {
+				ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
+				TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
+				TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
+				TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
+			}
+		} catch ( std::exception &e ) {
+			int size = MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, nullptr, 0);
+			std::wstring what(static_cast<std::size_t>(size-1), L'\0');
+			MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, what.data(), size);
+			auto wstr = std::format(L"以下のエラーが発生しました．バグの可能性が高いため， 詳しい状況を報告いただけると助かります．\nエラー内容: {}\n報告先: https://github.com/cycloawaodorin/resize_ks/issues", what);
+			MessageBoxW(GetActiveWindow(), wstr.c_str(), nullptr, MB_OK);
+			return false;
 		}
 		src = nullptr;
 		video->set_image_data(dest.get(), dw, dh);

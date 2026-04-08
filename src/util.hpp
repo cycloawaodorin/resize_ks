@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <exception>
 #include <stdexcept>
 
 class Rational {
@@ -157,6 +158,7 @@ private:
 	std::function<void(int)> func;
 	std::atomic<int> current_i=0;
 	int max_i=0;
+	std::exception_ptr ep;
 	void
 	listen(Thread *th)
 	{
@@ -167,8 +169,13 @@ private:
 			}
 			for ( int i=max_i; current_i<max_i; ) { // ジョブの取り出しと実行
 				i = current_i++;
-				if ( i < max_i ) {
-					func(i);
+				try {
+					if ( i < max_i ) {
+						func(i);
+					}
+				} catch (...) { // func からの例外を補足
+					ep = std::current_exception();
+					current_i = max_i;
 				}
 			}
 			{ // 全ジョブ完了
@@ -219,6 +226,11 @@ public:
 			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
 		}
 		func = nullptr;
+		if ( ep ) {
+			auto ep_ = ep;
+			ep = nullptr;
+			std::rethrow_exception(ep_);
+		}
 	}
 	void
 	parallel_do_batched(std::function<void(int)> f, int n)
