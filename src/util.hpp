@@ -26,12 +26,12 @@ public:
 	}
 	Rational(std::intmax_t i) : numerator(i), denominator(1ll) {}
 	Rational() : numerator(0ll), denominator(1ll) {}
-	inline std::intmax_t
+	std::intmax_t
 	get_numerator()
 	const {
 		return numerator;
 	}
-	inline std::intmax_t
+	std::intmax_t
 	get_denominator()
 	const {
 		return denominator;

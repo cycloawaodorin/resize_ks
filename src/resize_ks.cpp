@@ -47,6 +47,75 @@ UninitializePlugin()
 	TP = nullptr;
 }
 
+class ResizeAa {
+private:
+	class XY {
+	public:
+		int src_size, dest_size, sc, dc;
+		struct RANGE {
+			int start, end;
+		};
+		XY(int ss, int ds) : src_size(ss), dest_size(ds)
+		{
+			const int c = std::gcd(dest_size, src_size);
+			sc = dest_size/c;
+			dc = src_size/c;
+		}
+		void
+		calc_range(const int xy, RANGE *range)
+		const {
+			range->start = xy*dc;
+			range->end = (xy+1)*dc;
+		}
+	};
+	const PIXEL_RGBA *src;
+	PIXEL_RGBA *dest;
+	XY x, y;
+	std::int64_t w;
+	void
+	interpolate(int dx, int dy)
+	{
+		XY::RANGE xrange, yrange;
+		x.calc_range(dx, &xrange);
+		y.calc_range(dy, &yrange);
+		std::int64_t r=0ll, g=0ll, b=0ll, a=0ll;
+		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
+			const auto xs = (sy/y.sc)*(x.src_size);
+			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
+				const auto s_px = &src[xs+(sx/x.sc)];
+				const auto wa = static_cast<std::int64_t>(s_px->a);
+				r += s_px->r*wa;
+				g += s_px->g*wa;
+				b += s_px->b*wa;
+				a += wa;
+			}
+		}
+		auto d_px = &dest[dy*(x.dest_size)+dx];
+		d_px->r = uc_cast(r, a);
+		d_px->g = uc_cast(g, a);
+		d_px->b = uc_cast(b, a);
+		d_px->a = uc_cast(a, w);
+	}
+public:
+	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
+		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
+	{
+		w = x.dc*y.dc;
+	}
+	int
+	dest_height()
+	{
+		return y.dest_size;
+	}
+	void
+	invoke_interpolate(int dy)
+	{
+		for (auto dx=0; dx<(x.dest_size); dx++) {
+			interpolate(dx, dy);
+		}
+	}
+};
+
 class ResizeL3 {
 private:
 	class XY {
@@ -157,17 +226,17 @@ private:
 public:
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
-	inline int
+	int
 	var_size()
 	{
 		return x.var + y.var;
 	}
-	inline int
+	int
 	dest_sum()
 	{
 		return x.dest_size + y.dest_size;
 	}
-	inline int
+	int
 	dest_height()
 	{
 		return y.dest_size;
@@ -189,75 +258,6 @@ public:
 		} else {
 			y.calc_range(i-x.dest_size);
 		}
-	}
-	void
-	invoke_interpolate(int dy)
-	{
-		for (auto dx=0; dx<(x.dest_size); dx++) {
-			interpolate(dx, dy);
-		}
-	}
-};
-
-class ResizeAa {
-private:
-	class XY {
-	public:
-		int src_size, dest_size, sc, dc;
-		struct RANGE {
-			int start, end;
-		};
-		XY(int ss, int ds) : src_size(ss), dest_size(ds)
-		{
-			const int c = std::gcd(dest_size, src_size);
-			sc = dest_size/c;
-			dc = src_size/c;
-		}
-		void
-		calc_range(const int xy, RANGE *range)
-		const {
-			range->start = xy*dc;
-			range->end = (xy+1)*dc;
-		}
-	};
-	const PIXEL_RGBA *src;
-	PIXEL_RGBA *dest;
-	XY x, y;
-	std::int64_t w;
-	void
-	interpolate(int dx, int dy)
-	{
-		XY::RANGE xrange, yrange;
-		x.calc_range(dx, &xrange);
-		y.calc_range(dy, &yrange);
-		std::int64_t r=0ll, g=0ll, b=0ll, a=0ll;
-		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
-			const auto xs = (sy/y.sc)*(x.src_size);
-			for ( auto sx=(xrange.start); sx<(xrange.end); sx++ ) {
-				const auto s_px = &src[xs+(sx/x.sc)];
-				const auto wa = static_cast<std::int64_t>(s_px->a);
-				r += s_px->r*wa;
-				g += s_px->g*wa;
-				b += s_px->b*wa;
-				a += wa;
-			}
-		}
-		auto d_px = &dest[dy*(x.dest_size)+dx];
-		d_px->r = uc_cast(r, a);
-		d_px->g = uc_cast(g, a);
-		d_px->b = uc_cast(b, a);
-		d_px->a = uc_cast(a, w);
-	}
-public:
-	ResizeAa(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
-		: src(_src), dest(_dest), x(sw, dw), y(sh, dh)
-	{
-		w = x.dc*y.dc;
-	}
-	inline int
-	dest_height()
-	{
-		return y.dest_size;
 	}
 	void
 	invoke_interpolate(int dy)
