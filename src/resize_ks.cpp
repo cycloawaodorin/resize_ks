@@ -2,6 +2,8 @@
 #include <cmath>
 #include <numeric>
 #include <numbers>
+#include <vector>
+#include <map>
 #include "util.hpp"
 #include "filter2.hpp"
 #include "version.hpp"
@@ -14,12 +16,13 @@ static FILTER_ITEM_TRACK track_width(L"X", 100.0, 0.0, 10000.0, 0.01);
 static FILTER_ITEM_TRACK track_height(L"Y", 100.0, 0.0, 10000.0, 0.01);
 static FILTER_ITEM_CHECK check_ave(L"平均法", false);
 static FILTER_ITEM_CHECK check_dot(L"ピクセル数でサイズ指定", false);
+static FILTER_ITEM_CHECK check_mem(L"省メモリモード", true);
 
 EXTERN_C FILTER_PLUGIN_TABLE *
 GetFilterPluginTable()
 {
 	static void* settings[] = {
-		&track_mag, &track_width, &track_height, &check_ave, &check_dot, nullptr
+		&track_mag, &track_width, &track_height, &check_ave, &check_dot, &check_mem, nullptr
 	};
 	static FILTER_PLUGIN_TABLE fpt = {
 		FILTER_PLUGIN_TABLE::FLAG_VIDEO,
@@ -145,7 +148,7 @@ private:
 		int src_size, dest_size, var;
 		bool extend;
 		Rational reversed_scale, correction, weight_scale;
-		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
+		std::unique_ptr<std::vector<float>[]> weights;
 		std::unique_ptr<RANGE[]> ranges;
 		XY(int ss, int ds) : src_size(ss), dest_size(ds), reversed_scale(src_size, dest_size)
 		{
@@ -153,7 +156,7 @@ private:
 			correction = (reversed_scale-1ll)/2ll;
 			weight_scale = extend ? Rational(1ll) : reversed_scale.reciprocal();
 			var = dest_size / std::gcd(dest_size, src_size);
-			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
+			weights = std::make_unique<std::vector<float>[]>(static_cast<std::size_t>(var));
 			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
 		}
 		void
@@ -190,41 +193,116 @@ private:
 				e = ( c + reversed_scale*3ll ).ceilm1();
 			}
 			auto j = static_cast<std::size_t>(i);
-			weights[j] = std::make_unique<float[]>(static_cast<std::size_t>(e-s+1ll));
+			weights[j].resize( static_cast<std::size_t>(e-s+1ll) );
 			for ( auto sxy = s; sxy <= e; sxy++ ) {
 				weights[j][static_cast<std::size_t>(sxy-s)] = lanczos3( ((c-sxy)*weight_scale).to_float() );
 			}
 		}
 	};
+	class FloatRGBA {
+	public:
+		float r, g, b, a;
+		FloatRGBA() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
+		FloatRGBA&
+		operator +=(FloatRGBA &other)
+		{
+			r += other.r;
+			g += other.g;
+			b += other.b;
+			a += other.a;
+			return *this;
+		}
+		void
+		fma(const PIXEL_RGBA *s_px, float w)
+		{
+			const auto wa = w*s_px->a;
+			r = std::fmaf(s_px->r, wa, r);
+			g = std::fmaf(s_px->g, wa, g);
+			b = std::fmaf(s_px->b, wa, b);
+			a += wa;
+		}
+		void
+		put_pixel(PIXEL_RGBA *d_px, float w)
+		{
+			d_px->r = uc_cast(r/a);
+			d_px->g = uc_cast(g/a);
+			d_px->b = uc_cast(b/a);
+			d_px->a = uc_cast(a/w);
+		}
+		void
+		set(const PIXEL_RGBA *s_px, float w)
+		{
+			a = w*s_px->a;
+			r = s_px->r*a;
+			g = s_px->g*a;
+			b = s_px->b*a;
+		}
+	};
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
+	std::map<float, std::vector<FloatRGBA>> weighted;
 	void
 	interpolate(int dx, int dy)
 	{
 		const auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
 		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
-		float r=0.0f, g=0.0f, b=0.0f, a=0.0f, w=0.0f;
-		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
-		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
+		FloatRGBA sum;
+		float w=0.0f;
+		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ];
+		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ];
 		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
-			const auto wy = wys[sy-(yrange->start)+(yrange->skipped)];
+			const auto wy = wys[static_cast<std::size_t>( sy-(yrange->start)+(yrange->skipped) )];
 			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
-				const auto wxy = wy*wxs[sx-(xrange->start)+(xrange->skipped)];
-				const auto s_px = &src[sy*(x.src_size)+sx];
-				const auto wxya = wxy*s_px->a;
-				r = std::fmaf(s_px->r, wxya, r);
-				g = std::fmaf(s_px->g, wxya, g);
-				b = std::fmaf(s_px->b, wxya, b);
-				a += wxya;
+				const auto wxy = wy*wxs[static_cast<std::size_t>( sx-(xrange->start)+(xrange->skipped) )];
+				sum.fma(&src[sy*(x.src_size)+sx], wxy);
 				w += wxy;
 			}
 		}
-		auto d_px = &dest[dy*(x.dest_size)+dx];
-		d_px->r = uc_cast(r/a);
-		d_px->g = uc_cast(g/a);
-		d_px->b = uc_cast(b/a);
-		d_px->a = uc_cast(a/w);
+		sum.put_pixel(&dest[dy*(x.dest_size)+dx], w);
+	}
+	void
+	interpolate_rich(int dx, int dy)
+	{
+		const auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
+		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
+		FloatRGBA sum;
+		float w=0.0f;
+		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ];
+		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ];
+		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
+			const auto wy = wys[static_cast<std::size_t>( sy-(yrange->start)+(yrange->skipped) )];
+			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
+				const auto wxy = wy*wxs[static_cast<std::size_t>( sx-(xrange->start)+(xrange->skipped) )];
+				sum += weighted[wxy][static_cast<std::size_t>( sy*(x.src_size)+sx )];
+				w += wxy;
+			}
+		}
+		sum.put_pixel(&dest[dy*(x.dest_size)+dx], w);
+	}
+	void
+	allocate_weighted()
+	{
+		std::size_t len = static_cast<std::size_t>(x.src_size*y.src_size);
+		for (auto i=0uz; i<static_cast<std::size_t>(y.var); i++) {
+			for (auto &wy : y.weights[i]) {
+				for (auto j=0uz; j<static_cast<std::size_t>(x.var); j++) {
+					for (auto &wx : x.weights[j]) {
+						weighted.try_emplace(wy*wx, len);
+					}
+				}
+			}
+		}
+	}
+	void
+	set_weighted(float w, std::vector<FloatRGBA> &v)
+	{
+		for ( auto i=0; i<(y.src_size); i++ ) {
+			for ( auto j=0; j<(x.src_size); j++ ) {
+				auto idx = static_cast<std::size_t>(i*x.src_size+j);
+				v[idx].set(&src[idx], w);
+			}
+		}
 	}
 public:
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)
@@ -243,6 +321,11 @@ public:
 	dest_height()
 	{
 		return y.dest_size;
+	}
+	int
+	weighted_size()
+	{
+		return static_cast<int>(weighted.size());
 	}
 	void
 	invoke_set_weights(int i)
@@ -263,10 +346,37 @@ public:
 		}
 	}
 	void
+	invoke_calc_range_plus(int i)
+	{
+		if ( i == 0 ) {
+			allocate_weighted();
+		} else {
+			invoke_calc_range(i-1);
+		}
+	}
+	void
 	invoke_interpolate(int dy)
 	{
 		for (auto dx=0; dx<(x.dest_size); dx++) {
 			interpolate(dx, dy);
+		}
+	}
+	void
+	invoke_set_weighted(int i)
+	{
+		int j=0;
+		for (auto it = weighted.begin(); it != weighted.end(); it++) {
+			if ( i == j++ ) {
+				set_weighted(it->first, it->second);
+				return;
+			}
+		}
+	}
+	void
+	invoke_interpolate_rich(int dy)
+	{
+		for (auto dx=0; dx<(x.dest_size); dx++) {
+			interpolate_rich(dx, dy);
 		}
 	}
 };
@@ -294,8 +404,14 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 			} else {
 				ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
 				TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
-				TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
-				TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
+				if (check_mem.value) {
+					TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
+					TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
+				} else {
+					TP->parallel_do([&it](int i){ it.invoke_calc_range_plus(i); }, it.dest_sum()+1);
+					TP->parallel_do([&it](int i){ it.invoke_set_weighted(i); }, it.weighted_size());
+					TP->parallel_do([&it](int i){ it.invoke_interpolate_rich(i); }, it.dest_height());
+				}
 			}
 		} catch ( std::exception &e ) {
 			int size = MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, nullptr, 0);
