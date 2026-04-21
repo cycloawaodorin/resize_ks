@@ -1,6 +1,7 @@
 ﻿#include <Windows.h>
 #include <cmath>
 #include <numeric>
+#include <numbers>
 #include "util.hpp"
 #include "filter2.hpp"
 #include "version.hpp"
@@ -136,7 +137,9 @@ private:
 		static float
 		lanczos3(float x)
 		{
-			return sinc(PI*x)*sinc((PI/3.0f)*x);
+			constexpr static const float pi = std::numbers::pi_v<float>;
+			constexpr static const float pi_third = pi/3.0f;
+			return sinc(pi*x)*sinc(pi_third*x);
 		}
 	public:
 		int src_size, dest_size, var;
@@ -201,7 +204,7 @@ private:
 	{
 		const auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
 		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
-		float b=0.0f, g=0.0f, r=0.0f, a=0.0f, w=0.0f;
+		float r=0.0f, g=0.0f, b=0.0f, a=0.0f, w=0.0f;
 		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
 		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
 		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
