@@ -26,12 +26,12 @@ public:
 	}
 	Rational(std::intmax_t i) : numerator(i), denominator(1ll) {}
 	Rational() : numerator(0ll), denominator(1ll) {}
-	inline std::intmax_t
+	std::intmax_t
 	get_numerator()
 	const {
 		return numerator;
 	}
-	inline std::intmax_t
+	std::intmax_t
 	get_denominator()
 	const {
 		return denominator;
@@ -108,7 +108,7 @@ public:
 		}
 	}
 	std::intmax_t
-	floor_eps()
+	ceilm1()
 	const {
 		const auto r = numerator % denominator;
 		if ( r <= 0ll ) {
@@ -128,7 +128,7 @@ public:
 		}
 	}
 	std::intmax_t
-	ceil_eps()
+	floorp1()
 	const {
 		const auto r = numerator % denominator;
 		if ( r < 0ll ) {
@@ -242,41 +242,3 @@ public:
 		}, m );
 	}
 };
-
-constexpr const float PI = 3.141592653589793f;
-
-unsigned char
-uc_cast(float x)
-{
-	if ( x < 0.0f || std::isnan(x) ) {
-		return static_cast<unsigned char>(0u);
-	} else if ( 255.0f < x ) {
-		return static_cast<unsigned char>(255u);
-	} else {
-		return static_cast<unsigned char>(std::nearbyint(x));
-	}
-}
-
-unsigned char
-uc_cast(std::int64_t num, std::int64_t den)
-{
-	if ( num <= 0ll ) {
-		return static_cast<unsigned char>(0u);
-	} else if ( 255ll*den <= num ) {
-		return static_cast<unsigned char>(255u);
-	} else {
-		auto r = num % den;
-		if ( r*2ll < den ) {
-			return static_cast<unsigned char>((num-r)/den);
-		} else if ( r*2ll == den ) {
-			r = (num-r)/den;
-			if ( (r&1ll) == 0ll ) {
-				return static_cast<unsigned char>(r);
-			} else {
-				return static_cast<unsigned char>(r+1ll);
-			}
-		} else {
-			return static_cast<unsigned char>((num-r)/den+1ll);
-		}
-	}
-}
