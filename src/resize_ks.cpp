@@ -50,24 +50,18 @@ UninitializePlugin()
 
 class ResizeAa {
 private:
-	class XY {
-	public:
+	struct XY {
 		int src_size, dest_size, sc, dc;
-		struct RANGE {
-			int start, end;
-		};
 		XY(int ss, int ds) : src_size(ss), dest_size(ds)
 		{
-			const int c = std::gcd(dest_size, src_size);
+			const auto c = std::gcd(dest_size, src_size);
 			sc = dest_size/c;
 			dc = src_size/c;
 		}
-		void
-		calc_range(const int xy, RANGE *range)
-		const {
-			range->start = xy*dc;
-			range->end = (xy+1)*dc;
-		}
+	};
+	struct Range {
+		int start, end;
+		Range(int i, int dc) : start(i*dc), end((i+1)*dc) {}
 	};
 	static unsigned char
 	uc_cast(std::int64_t num, std::int64_t den)
@@ -100,9 +94,7 @@ private:
 	void
 	interpolate(int dx, int dy)
 	{
-		XY::RANGE xrange, yrange;
-		x.calc_range(dx, &xrange);
-		y.calc_range(dy, &yrange);
+		Range xrange(dx, x.dc), yrange(dy, y.dc);
 		std::int64_t r=0ll, g=0ll, b=0ll, a=0ll;
 		for ( auto sy=(yrange.start); sy<(yrange.end); sy++ ) {
 			const auto xs = (sy/y.sc)*(x.src_size);
@@ -145,7 +137,7 @@ class ResizeL3 {
 private:
 	class XY {
 	private:
-		struct RANGE {
+		struct Range {
 			int start, end, skipped;
 			Rational center;
 		};
@@ -170,7 +162,7 @@ private:
 		bool extend;
 		Rational reversed_scale, correction, weight_scale;
 		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
-		std::unique_ptr<RANGE[]> ranges;
+		std::unique_ptr<Range[]> ranges;
 		XY(int ss, int ds) : src_size(ss), dest_size(ds), reversed_scale(src_size, dest_size)
 		{
 			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
@@ -178,7 +170,7 @@ private:
 			weight_scale = extend ? Rational(1ll) : reversed_scale.reciprocal();
 			var = dest_size / std::gcd(dest_size, src_size);
 			weights = std::make_unique<std::unique_ptr<float[]>[]>(static_cast<std::size_t>(var));
-			ranges = std::make_unique<RANGE[]>(static_cast<std::size_t>(dest_size));
+			ranges = std::make_unique<Range[]>(static_cast<std::size_t>(dest_size));
 		}
 		void
 		calc_range(int xy)
