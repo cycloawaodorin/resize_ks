@@ -242,27 +242,3 @@ public:
 		}, m );
 	}
 };
-
-unsigned char
-uc_cast(std::int64_t num, std::int64_t den)
-{
-	if ( num <= 0ll ) {
-		return static_cast<unsigned char>(0u);
-	} else if ( 255ll*den <= num ) {
-		return static_cast<unsigned char>(255u);
-	} else {
-		auto r = num % den;
-		if ( r*2ll < den ) {
-			return static_cast<unsigned char>((num-r)/den);
-		} else if ( r*2ll == den ) {
-			r = (num-r)/den;
-			if ( (r&1ll) == 0ll ) {
-				return static_cast<unsigned char>(r);
-			} else {
-				return static_cast<unsigned char>(r+1ll);
-			}
-		} else {
-			return static_cast<unsigned char>((num-r)/den+1ll);
-		}
-	}
-}

@@ -69,6 +69,30 @@ private:
 			range->end = (xy+1)*dc;
 		}
 	};
+	static unsigned char
+	uc_cast(std::int64_t num, std::int64_t den)
+	{
+		constexpr static const unsigned char u0=0u, u255=255u;
+		if ( num <= 0ll ) {
+			return u0;
+		} else if ( 255ll*den <= num ) {
+			return u255;
+		} else {
+			auto r = num % den;
+			if ( r*2ll < den ) {
+				return static_cast<unsigned char>((num-r)/den);
+			} else if ( r*2ll == den ) {
+				r = (num-r)/den;
+				if ( (r&1ll) == 0ll ) {
+					return static_cast<unsigned char>(r);
+				} else {
+					return static_cast<unsigned char>(r+1ll);
+				}
+			} else {
+				return static_cast<unsigned char>((num-r)/den+1ll);
+			}
+		}
+	}
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
@@ -198,10 +222,10 @@ private:
 	};
 	class FloatRGBAW {
 	private:
-		constexpr static const unsigned char u0=0u, u255=255u;
 		static unsigned char
 		uc_cast(float x)
 		{
+			constexpr static const unsigned char u0=0u, u255=255u;
 			if ( x < 0.0f || std::isnan(x) ) {
 				return u0;
 			} else if ( 255.0f < x ) {
@@ -225,7 +249,7 @@ private:
 		}
 		void
 		put_pixel(PIXEL_RGBA *d_px)
-		{
+		const {
 			d_px->r = uc_cast(r/a);
 			d_px->g = uc_cast(g/a);
 			d_px->b = uc_cast(b/a);
