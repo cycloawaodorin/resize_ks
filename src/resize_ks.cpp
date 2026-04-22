@@ -121,7 +121,7 @@ public:
 	}
 	int
 	dest_height()
-	{
+	const {
 		return y.dest_size;
 	}
 	void
@@ -273,17 +273,17 @@ public:
 		: src(_src), dest(_dest), x(sw, dw), y(sh, dh) {}
 	int
 	var_size()
-	{
+	const {
 		return x.var + y.var;
 	}
 	int
 	dest_sum()
-	{
+	const {
 		return x.dest_size + y.dest_size;
 	}
 	int
 	dest_height()
-	{
+	const {
 		return y.dest_size;
 	}
 	void
