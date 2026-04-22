@@ -241,6 +241,11 @@ public:
 			}
 		}, m );
 	}
+	int
+	get_size()
+	{
+		return static_cast<int>(size);
+	}
 };
 
 unsigned char

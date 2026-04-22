@@ -249,8 +249,8 @@ private:
 		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
 		FloatRGBA sum;
 		float w=0.0f;
-		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ];
-		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ];
+		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].data();
+		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].data();
 		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
 			const auto wy = wys[static_cast<std::size_t>( sy-(yrange->start)+(yrange->skipped) )];
 			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
@@ -346,12 +346,16 @@ public:
 		}
 	}
 	void
-	invoke_calc_range_plus(int i)
+	invoke_calc_range_plus(int i, int m)
 	{
 		if ( i == 0 ) {
 			allocate_weighted();
 		} else {
-			invoke_calc_range(i-1);
+			const int n = dest_sum();
+			const int s=((i-1)*n)/m, e=(i*n)/m;
+			for (auto j=s; j<e; j++) {
+				invoke_calc_range(j);
+			}
 		}
 	}
 	void
@@ -408,7 +412,8 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 					TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
 					TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 				} else {
-					TP->parallel_do([&it](int i){ it.invoke_calc_range_plus(i); }, it.dest_sum()+1);
+					const int m=TP->get_size();
+					TP->parallel_do([&it, m](int i){ it.invoke_calc_range_plus(i, m-1); }, m);
 					TP->parallel_do([&it](int i){ it.invoke_set_weighted(i); }, it.weighted_size());
 					TP->parallel_do([&it](int i){ it.invoke_interpolate_rich(i); }, it.dest_height());
 				}
