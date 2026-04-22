@@ -196,6 +196,42 @@ private:
 			}
 		}
 	};
+	class FloatRGBAW {
+	private:
+		constexpr static const unsigned char u0=0u, u255=255u;
+		static unsigned char
+		uc_cast(float x)
+		{
+			if ( x < 0.0f || std::isnan(x) ) {
+				return u0;
+			} else if ( 255.0f < x ) {
+				return u255;
+			} else {
+				return static_cast<unsigned char>(std::nearbyint(x));
+			}
+		}
+	public:
+		float r, g, b, a, w;
+		FloatRGBAW() : r(0.0f), g(0.0f), b(0.0f), a(0.0f), w(0.0f) {}
+		void
+		fma(const PIXEL_RGBA *s_px, float wxy)
+		{
+			const auto wxya = wxy*static_cast<float>(s_px->a);
+			r = std::fma(static_cast<float>(s_px->r), wxya, r);
+			g = std::fma(static_cast<float>(s_px->g), wxya, g);
+			b = std::fma(static_cast<float>(s_px->b), wxya, b);
+			a += wxya;
+			w += wxy;
+		}
+		void
+		put_pixel(PIXEL_RGBA *d_px)
+		{
+			d_px->r = uc_cast(r/a);
+			d_px->g = uc_cast(g/a);
+			d_px->b = uc_cast(b/a);
+			d_px->a = uc_cast(a/w);
+		}
+	};
 	const PIXEL_RGBA *src;
 	PIXEL_RGBA *dest;
 	XY x, y;
@@ -204,27 +240,17 @@ private:
 	{
 		const auto xrange = &(x.ranges[static_cast<std::size_t>(dx)]);
 		const auto yrange = &(y.ranges[static_cast<std::size_t>(dy)]);
-		float r=0.0f, g=0.0f, b=0.0f, a=0.0f, w=0.0f;
+		FloatRGBAW rgbaw;
 		const auto wxs = x.weights[ static_cast<std::size_t>( dx % (x.var) ) ].get();
 		const auto wys = y.weights[ static_cast<std::size_t>( dy % (y.var) ) ].get();
 		for ( auto sy=(yrange->start); sy<=(yrange->end); sy++ ) {
 			const auto wy = wys[sy-(yrange->start)+(yrange->skipped)];
 			for ( auto sx=(xrange->start); sx<=(xrange->end); sx++ ) {
 				const auto wxy = wy*wxs[sx-(xrange->start)+(xrange->skipped)];
-				const auto s_px = &src[sy*(x.src_size)+sx];
-				const auto wxya = wxy*s_px->a;
-				r = std::fmaf(s_px->r, wxya, r);
-				g = std::fmaf(s_px->g, wxya, g);
-				b = std::fmaf(s_px->b, wxya, b);
-				a += wxya;
-				w += wxy;
+				rgbaw.fma(&src[sy*(x.src_size)+sx], wxy);
 			}
 		}
-		auto d_px = &dest[dy*(x.dest_size)+dx];
-		d_px->r = uc_cast(r/a);
-		d_px->g = uc_cast(g/a);
-		d_px->b = uc_cast(b/a);
-		d_px->a = uc_cast(a/w);
+		rgbaw.put_pixel(&dest[dy*(x.dest_size)+dx]);
 	}
 public:
 	ResizeL3(const PIXEL_RGBA *_src, int sw, int sh, PIXEL_RGBA *_dest, int dw, int dh)

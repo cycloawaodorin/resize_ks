@@ -244,18 +244,6 @@ public:
 };
 
 unsigned char
-uc_cast(float x)
-{
-	if ( x < 0.0f || std::isnan(x) ) {
-		return static_cast<unsigned char>(0u);
-	} else if ( 255.0f < x ) {
-		return static_cast<unsigned char>(255u);
-	} else {
-		return static_cast<unsigned char>(std::nearbyint(x));
-	}
-}
-
-unsigned char
 uc_cast(std::int64_t num, std::int64_t den)
 {
 	if ( num <= 0ll ) {
