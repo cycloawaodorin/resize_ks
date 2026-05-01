@@ -48,6 +48,8 @@ UninitializePlugin()
 	TP = nullptr;
 }
 
+constexpr static const unsigned char uc0=0u, uc255=255u;
+
 class ResizeAa {
 private:
 	struct XY {
@@ -66,11 +68,10 @@ private:
 	static unsigned char
 	uc_cast(std::int64_t num, std::int64_t den)
 	{
-		constexpr static const unsigned char u0=0u, u255=255u;
 		if ( num <= 0ll ) {
-			return u0;
+			return uc0;
 		} else if ( 255ll*den <= num ) {
-			return u255;
+			return uc255;
 		} else {
 			auto r = num % den;
 			if ( r*2ll < den ) {
@@ -217,11 +218,10 @@ private:
 		static unsigned char
 		uc_cast(float x)
 		{
-			constexpr static const unsigned char u0=0u, u255=255u;
 			if ( x < 0.0f || std::isnan(x) ) {
-				return u0;
+				return uc0;
 			} else if ( 255.0f < x ) {
-				return u255;
+				return uc255;
 			} else {
 				return static_cast<unsigned char>(std::nearbyint(x));
 			}
