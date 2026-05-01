@@ -142,6 +142,8 @@ private:
 			int start, end, skipped;
 			Rational center;
 		};
+		Rational reversed_scale, correction, weight_scale;
+		bool extend;
 		static float
 		sinc(float x)
 		{
@@ -160,12 +162,13 @@ private:
 		}
 	public:
 		int src_size, dest_size, var;
-		bool extend;
-		Rational reversed_scale, correction, weight_scale;
 		std::unique_ptr<std::unique_ptr<float[]>[]> weights;
 		std::unique_ptr<Range[]> ranges;
-		XY(int ss, int ds) : src_size(ss), dest_size(ds), reversed_scale(src_size, dest_size)
+		XY(int ss, int ds) : src_size(ss), dest_size(ds) {}
+		void
+		calc_params()
 		{
+			reversed_scale = Rational(src_size, dest_size);
 			extend = ( reversed_scale.get_numerator() <= reversed_scale.get_denominator() );
 			correction = (reversed_scale-1ll)/2ll;
 			weight_scale = extend ? Rational(1ll) : reversed_scale.reciprocal();
@@ -215,6 +218,7 @@ private:
 	};
 	class FloatRGBAW {
 	private:
+		float r, g, b, a, w;
 		static unsigned char
 		uc_cast(float x)
 		{
@@ -227,7 +231,6 @@ private:
 			}
 		}
 	public:
-		float r, g, b, a, w;
 		FloatRGBAW() : r(0.0f), g(0.0f), b(0.0f), a(0.0f), w(0.0f) {}
 		void
 		fma(const PIXEL_RGBA *s_px, float wxy)
@@ -287,6 +290,15 @@ public:
 		return y.dest_size;
 	}
 	void
+	invoke_calc_params(int i)
+	{
+		if ( i == 0 ) {
+			x.calc_params();
+		} else {
+			y.calc_params();
+		}
+	}
+	void
 	invoke_set_weights(int i)
 	{
 		if ( i < x.var ) {
@@ -335,6 +347,7 @@ func_proc_video(FILTER_PROC_VIDEO *video)
 				TP->parallel_do_batched([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
 			} else {
 				ResizeL3 it(src.get(), sw, sh, dest.get(), dw, dh);
+				TP->parallel_do([&it](int i){ it.invoke_calc_params(i); }, 2);
 				TP->parallel_do([&it](int i){ it.invoke_set_weights(i); }, it.var_size());
 				TP->parallel_do_batched([&it](int i){ it.invoke_calc_range(i); }, it.dest_sum());
 				TP->parallel_do([&it](int i){ it.invoke_interpolate(i); }, it.dest_height());
