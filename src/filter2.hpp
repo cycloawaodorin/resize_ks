@@ -279,6 +279,26 @@ enum class BLEND_STATE_MODE : int {
 
 //----------------------------------------------------------------------------------
 
+// 画像入力のピクセルフォーマット種別
+enum class INPUT_PIXEL_FORMAT : int {
+	RGBA	= 28,	// DXGI_FORMAT_R8G8B8A8_UNORM ※PIXEL_RGBA
+	BGRA	= 87,	// DXGI_FORMAT_B8G8R8A8_UNORM
+	BGR		= 88,	// DXGI_FORMAT_B8G8R8X8_UNORM
+	PA64	= 11,	// DXGI_FORMAT_R16G16B16A16_UNORM
+	HF64	= 10,	// DXGI_FORMAT_R16G16B16A16_FLOAT
+	YUY2	= 107,	// DXGI_FORMAT_YUY2
+	YC48	= 13,	// DXGI_FORMAT_R16G16B16A16_SNORM ※互換対応
+};
+
+// 画像出力のピクセルフォーマット種別
+enum class OUTPUT_PIXEL_FORMAT : int {
+	RGBA	= 28,	// DXGI_FORMAT_R8G8B8A8_UNORM ※PIXEL_RGBA
+	PA64	= 11,	// DXGI_FORMAT_R16G16B16A16_UNORM
+	HF64	= 10,	// DXGI_FORMAT_R16G16B16A16_FLOAT
+};
+
+//----------------------------------------------------------------------------------
+
 // RGBA32bit構造体
 struct PIXEL_RGBA {
 	unsigned char r, g, b, a;
@@ -353,7 +373,7 @@ struct FILTER_PROC_VIDEO {
 	// width, height	: 画像サイズ
 	void (*set_image_data)(PIXEL_RGBA* buffer, int width, int height);
 
-	// 現在のオブジェクトの画像データのポインタを取得する (ID3D11Texture2Dのポインタを取得します) 
+	// 現在のオブジェクトのD3D画像リソースのポインタを取得する (ID3D11Texture2Dのポインタを取得します) 
 	// 戻り値		: オブジェクトの画像ID3D11Texture2Dのポインタ
 	//				  ※現在の画像が変更(set_image_data)されるかフィルタ処理の終了まで有効
 	ID3D11Texture2D* (*get_image_texture2d)();
@@ -411,7 +431,7 @@ struct FILTER_PROC_VIDEO {
 	//				  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
 	//				  "image:xxxx"		= 画像ファイル(xxxxは画像ファイルパス) ※画像はVRAMにキャッシュされます
 	// 戻り値		: 失敗した場合はfalse (頂点数が不正な場合等)
-	bool (*draw_poly)(VERTEX_TYPE vertex_type, void* vertex_list, int vertex_num, LPCWSTR resource);
+	bool (*draw_poly)(VERTEX_TYPE vertex_type, const void* vertex_list, int vertex_num, LPCWSTR resource);
 
 	// 標準のアンカー枠を設定します ※func_proc_video()でtrueを返却した場合は自動で設定されます
 	// draw_image()などを利用してオブジェクトの描画を全て自身で処理する場合に利用します
@@ -450,7 +470,7 @@ struct FILTER_PROC_VIDEO {
 	//				  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前) ※レンダリング処理共用のキャッシュバッファ
 	// buffer		: 画像データへのポインタ (nullptrの場合は初期データ無しで画像サイズを変更します)
 	// width,height	: 画像サイズ
-	void (*create_image_resource)(LPCWSTR resource, PIXEL_RGBA* buffer, int width, int height);
+	void (*create_image_resource)(LPCWSTR resource, const PIXEL_RGBA* buffer, int width, int height);
 
 	// 指定の画像リソースのD3D画像リソースのポインタを取得する (ID3D11Texture2Dのポインタを取得します) 
 	// resource	: 画像リソース名
@@ -527,7 +547,7 @@ struct FILTER_PROC_VIDEO {
 	//				  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
 	//				  "image:xxxx"		= 画像ファイル(xxxxは画像ファイルパス) ※画像はVRAMにキャッシュされます
 	// 戻り値		: 失敗した場合はfalse (頂点数が不正な場合等)
-	bool (*draw_poly_to_resource)(LPCWSTR dst_resource, VERTEX_TYPE vertex_type, void* vertex_list, int vertex_num, LPCWSTR src_resource);
+	bool (*draw_poly_to_resource)(LPCWSTR dst_resource, VERTEX_TYPE vertex_type, const void* vertex_list, int vertex_num, LPCWSTR src_resource);
 
 	// ピクセルシェーダーを実行します
 	// cso_file			: コンパイル済みピクセルシェーダーのバイナリファイル名 ※ファイル名部分のみ
@@ -601,6 +621,103 @@ struct FILTER_PROC_VIDEO {
 	// sampler	: サンプラー種別
 	// 戻り値	: ID3D11SamplerStateのポインタ (指定種別が無い場合はnullptrを返却)
 	ID3D11SamplerState* (*get_sampler_state)(SAMPLER_MODE sampler);
+
+	// ピクセルシェーダーを実行します
+	// data				: コンパイル済みピクセルシェーダーのデータへのポインタ(ヘッダーファイルとして出力したデータを利用する)
+	// data_size		: コンパイル済みピクセルシェーダーのサイズ
+	//					  ※ピクセルシェーダー5.0でコンパイルしたものが利用出来ます
+	//					  ピクセルシェーダーの入力は下記が利用できます
+	//						float4 psmain(float4 pos : SV_Position) : SV_Target
+	//						float4 psmain(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+	//					  ※シェーダーリフレクションを利用してシグネチャから判別しています
+	// target			: 出力先の画像リソース名
+	//					  Direct3Dのレンダーターゲットに設定されます
+	//					  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//					  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//					  "framebuffer"		= フレームバッファ
+	//					  "tempbuffer"		= 仮想バッファ
+	//					  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
+	// resource_list	: 参照する画像リソース名のリストへのポインタ ※nullptrの場合は設定無し
+	//					  Direct3Dのシェーダーリソース(t0～)に設定されます ※レンダーターゲットと同じリソースは利用出来ません
+	//					  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//					  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//					  "tempbuffer"		= 仮想バッファ
+	//					  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
+	//					  "image:xxxx"		= 画像ファイル(xxxxは画像ファイルパス) ※画像はVRAMにキャッシュされます
+	//					  "random"			= 乱数バッファ(0.0～1.0の乱数値の256x256の領域) ※DXGI_FORMAT_R32_FLOAT(r値のみ)になります
+	// resource_num		: 参照する画像リソースの数
+	// constant			: 定数バッファへのポインタ ※nullptrの場合は定数バッファの設定無し
+	//					  Direct3Dの定数バッファ(b0)に設定します
+	// constant_size	: 定数バッファのサイズ
+	// blend_state		: Direct3DのBlendStateを設定します ※nullptrの場合は出力をそのままコピー
+	// sampler_state	: Direct3DのSamplerState(s0)を設定します ※nullptrの場合は設定無し
+	// 戻り値			: 失敗した場合はfalse (画像リソース名が不正な場合等)
+	bool (*exec_pixelshader_data)(const BYTE* data, int data_size, LPCWSTR target, LPCWSTR* resource_list, int resource_num, void* constant, int constant_size, ID3D11BlendState* blend_state, ID3D11SamplerState* sampler_state);
+
+	// コンピュートシェーダーを実行します
+	// data				: コンパイル済みコンピュートシェーダーのデータへのポインタ(ヘッダーファイルとして出力したデータを利用する)
+	// data_size		: コンパイル済みコンピュートシェーダーのサイズ
+	//					  ※コンピュートシェーダー5.0でコンパイルしたものが利用出来ます
+	// target_list		: 読み書き先の画像リソース名のリストへのポインタ
+	//					  Direct3DのUnorderedAccessリソース(u0～)に設定されます
+	//					  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//					  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//					  "framebuffer"		= フレームバッファ
+	//					  "tempbuffer"		= 仮想バッファ
+	//					  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
+	// target_num		: 読み書き先の画像リソースの数
+	// resource_list	: 参照する画像リソース名のリストへのポインタ ※nullptrの場合は設定無し
+	//					  Direct3Dのシェーダーリソース(t0～)に設定されます ※UnorderedAccessリソースと同じリソースは利用出来ません
+	//					  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//					  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//					  "tempbuffer"		= 仮想バッファ
+	//					  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
+	//					  "image:xxxx"		= 画像ファイル(xxxxは画像ファイルパス) ※画像はVRAMにキャッシュされます
+	//					  "random"			= 乱数バッファ(0.0～1.0の乱数値の256x256の領域) ※DXGI_FORMAT_R32_FLOAT(r値のみ)になります
+	// resource_num		: 参照する画像リソースの数
+	// constant			: 定数バッファへのポインタ ※nullptrの場合は定数バッファの設定無し
+	//					  Direct3Dの定数バッファ(b0)に設定します
+	// constant_size	: 定数バッファのサイズ
+	// count_x			: X軸スレッドグループ数
+	// count_y			: Y軸スレッドグループ数
+	// count_z			: Z軸スレッドグループ数
+	// sampler_state	: Direct3DのSamplerState(s0)を設定します ※nullptrの場合は設定無し
+	// 戻り値			: 失敗した場合はfalse (画像リソース名が不正な場合等)
+	bool (*exec_computeshader_data)(const BYTE* data, int data_size, LPCWSTR* target_list, int target_num, LPCWSTR* resource_list, int resource_num, void* constant, int constant_size, int count_x, int count_y, int count_z, ID3D11SamplerState* sampler_state);
+
+	// 指定の画像リソースのサイズを取得する
+	// resource		: 画像リソース名
+	//				  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//				  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//				  "tempbuffer"		= 仮想バッファ
+	//				  "cache:xxxx"		= キャッシュバッファ(xxxxは任意の名前)
+	//				  "image:xxxx"		= 画像ファイル(xxxxは画像ファイルパス) ※画像はVRAMにキャッシュされます
+	// width,height	: 画像サイズの格納先へのポインタ
+	// 戻り値		: 失敗した場合はfalse (画像リソース名が不正な場合等)
+	bool (*get_image_resource_size)(LPCWSTR resource, int* width, int* height);
+
+	// 画像リソースから指定フォーマットの画像データを取得する (VRAMからデータを取得します) 
+	// resource		: 画像リソース名
+	//				  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//				  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	// buffer		: 画像データの格納先へのポインタ
+	// width,height	: 画像データの格納先のサイズ ※画像リソースとサイズが一致する場合のみ取得出来ます
+	// pitch		: 画像データの格納先の横1ラインのバイト数
+	// format		: 取得する画像データのピクセルフォーマット
+	// 戻り値		: 失敗した場合はfalse (画像リソース名が不正な場合等)
+	bool (*get_image_resource_data)(LPCWSTR resource, void* buffer, int width, int height, int pitch, OUTPUT_PIXEL_FORMAT format);
+
+	// 画像リソースに指定フォーマットの画像データを設定する (VRAMへデータを書き込みます)
+	// ※存在しない画像リソース名を指定した場合は新規作成します
+	// resource		: 作成する画像リソース名
+	//				  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
+	//				  "resource:xxxx"	= 標準リソース(xxxxは任意の名前) ※フィルタ処理後に破棄されます
+	// buffer		: 画像データへのポインタ
+	// width,height	: 画像サイズ
+	// pitch		: 画像データの横1ラインのバイト数
+	// format		: 画像データのピクセルフォーマット
+	// 戻り値		: 失敗した場合はfalse (画像リソース名が不正な場合等)
+	bool (*set_image_resource_data)(LPCWSTR resource, const void* buffer, int width, int height, int pitch, INPUT_PIXEL_FORMAT format);
 
 };
 
