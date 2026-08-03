@@ -344,6 +344,7 @@ struct OBJECT_INFO {
 	int	num;				// 複数オブジェクト時の対象数 (1 = 単体オブジェクト / 0 = 不定) ※個別オブジェクト用
 	int frame_s;			// 全体(シーン)基準のオブジェクトの開始フレーム(0からの番号)
 	int frame_e;			// 全体(シーン)基準のオブジェクトの終了フレーム(0からの番号)
+	int effect_layer;		// 対象エフェクトの現在のレイヤー番号 ※自身のオブジェクトのレイヤー番号
 
 	inline bool is_filter_object() const { return flag & FLAG_FILTER_OBJECT; }
 };
@@ -393,7 +394,7 @@ struct FILTER_PROC_VIDEO {
 	ID3D11Texture2D* (*get_image_texture2d)();
 
 	// 現在のフレームバッファのD3D画像リソースのポインタを取得する (ID3D11Texture2Dのポインタを取得します) 
-	// 戻り値		: フレームバッファのID3D11Texture2Dへのポインタ
+	// 戻り値		: フレームバッファのID3D11Texture2Dのポインタ
 	//				  ※フィルタ処理の終了まで有効
 	ID3D11Texture2D* (*get_framebuffer_texture2d)();
 
@@ -594,7 +595,7 @@ struct FILTER_PROC_VIDEO {
 	// blend_state		: Direct3DのBlendStateを設定します ※nullptrの場合は出力をそのままコピー
 	// sampler_state	: Direct3DのSamplerState(s0)を設定します ※nullptrの場合は設定無し
 	// 戻り値			: 失敗した場合はfalse (画像リソース名が不正な場合等)
-	bool (*exec_pixelshader)(LPCWSTR cso_file, LPCWSTR target, LPCWSTR* resource_list, int resource_num, void* constant, int constant_size, ID3D11BlendState* blend_state, ID3D11SamplerState* sampler_state);
+	bool (*exec_pixelshader_file)(LPCWSTR cso_file, LPCWSTR target, LPCWSTR* resource_list, int resource_num, void* constant, int constant_size, ID3D11BlendState* blend_state, ID3D11SamplerState* sampler_state);
 
 	// コンピュートシェーダーを実行します
 	// cso_file			: コンパイル済みコンピュートシェーダーのバイナリファイル名 ※ファイル名部分のみ
