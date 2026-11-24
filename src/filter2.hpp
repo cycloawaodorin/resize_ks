@@ -33,6 +33,21 @@ struct EDIT_SECTION;
 
 // オブジェクトハンドル
 typedef void* OBJECT_HANDLE;
+// エフェクトハンドル
+typedef void* EFFECT_HANDLE;
+
+// RGBA32bit構造体
+struct PIXEL_RGBA {
+	unsigned char r, g, b, a;
+	static constexpr PIXEL_RGBA FROM_CODE(int code) {
+		return PIXEL_RGBA{ static_cast<unsigned char>((code >> 16) & 0xff), static_cast<unsigned char>((code >> 8) & 0xff), static_cast<unsigned char>(code & 0xff), 255 };
+	}
+};
+
+//----------------------------------------------------------------------------------
+
+// 各項目の設定名はフィルタ毎にユニークにする必要があります。(設定値が保存される項目のみ)
+// 設定名を'yyy::xxx'のように指定すると最後の'::'以降の'xxx'の部分のみ設定画面で表示される形に出来ます。
 
 // トラックバー項目構造体
 // 例：FILTER_ITEM_TRACK track = { L"数値", 100.0, 0.0, 1000.0, 0.01 };
@@ -92,6 +107,37 @@ struct FILTER_ITEM_COLOR {
 	VALUE value;				// 設定値 (フィルタ処理の呼び出し時に現在の値に更新されます)
 };
 
+// 色リスト項目構造体
+// 設定値の色の最大数をテンプレート引数で指定出来ます。
+// 設定名は"|"区切りで2個目以降の項目名を指定出来ます。※最大数より少ない場合は最後の項目名になります。
+// デフォルトの設定値は可変引数で指定出来ます。
+// 例：FILTER_ITEM_COLOR_LIST<8> colorlist = { L"基準色|中間色", 0xffffff };
+struct FILTER_ITEM_COLOR_LIST_FLAG {
+	static constexpr int USE_UNDEFINED		= 1; // 未指定を利用するか？
+	static constexpr int USE_POSITION		= 2; // 色の位置を利用するか？
+	static constexpr int FIXED_COLOR_NUM	= 4; // 色の数を固定するか？
+	static constexpr int USE_ALPHA_CHANNEL	= 8; // アルファ値を利用するか？
+};
+template <typename std::size_t N>
+struct FILTER_ITEM_COLOR_LIST {
+	struct VALUE { // 設定値の色
+		VALUE(PIXEL_RGBA color = PIXEL_RGBA{ 0, 0, 0, 255 }) : color(color), position(0), isUndefined(0) {}
+		PIXEL_RGBA color;
+		unsigned int position:31; // 0～10000
+		unsigned int isUndefined:1;
+		inline float getPosition() const { return position / 100.0f; } // 0.0～100.0の値で位置を取得
+	};
+	template <typename... Args>
+	FILTER_ITEM_COLOR_LIST(LPCWSTR name, int flag, Args... args)
+		: name(name), flag(flag), value{ static_cast<VALUE>(args)... }, num(sizeof...(args)), max_num(N) {}
+	LPCWSTR type = L"colorlist";	// 設定の種別
+	LPCWSTR name;					// 設定名
+	const int flag;					// 設定のフラグ (FILTER_ITEM_COLOR_LIST_FLAG)
+	const int max_num;				// 設定値の最大数
+	int num;						// 設定値の数 (フィルタ処理の呼び出し時に現在の値に更新されます)
+	VALUE value[N];					// 設定値 (フィルタ処理の呼び出し時に現在の値に更新されます)
+};
+
 // 選択リスト項目構造体
 // 例：FILTER_ITEM_SELECT::ITEM list[] = { { L"項目1", 1 }, { L"項目2", 2 }, { L"項目3", 3 }, { nullptr } };
 //     FILTER_ITEM_SELECT selectItem = { L"選択", 1, list };
@@ -120,6 +166,7 @@ struct FILTER_ITEM_FILE {
 // 汎用データ項目構造体 (設定が表示されない項目になります)
 // フィルタ処理関数内でvalueの参照先データを更新することが出来ます
 // ※Undoポイントの作成や編集済みフラグの設定はされません
+// ※保存済みの汎用データが空の場合はデフォルト値に初期化されます
 // フィルタ処理関数内のset_filter_item_data_size()関数でデータのサイズを変更出来ます
 // 例：struct Data {
 //       int   item1 = 1;
@@ -158,12 +205,17 @@ struct FILTER_ITEM_GROUP {
 
 // ボタン項目構造体
 // ボタンを押すとコールバック関数が呼ばれます ※plugin2.hの編集のコールバック関数と同様な形になります
-// 例：FILTER_ITEM_BUTTON button = { L"初期化", [](EDIT_SECTION* edit) { /* ボタンを押した時の処理 */ } };
+// 例：FILTER_ITEM_BUTTON button = { L"初期化", [](EDIT_SECTION* edit, OBJECT_HANDLE object, LPCWSTR effect, LPCWSTR item) {
+//        /* ボタンを押した時の処理 (引数はEDIT_SECTION::get_object_item_value()の引数と同じ形式になります) */
+//     } };
 struct FILTER_ITEM_BUTTON {
-	FILTER_ITEM_BUTTON(LPCWSTR _name, void (*_callback)(EDIT_SECTION* edit)) : name(_name), callback(_callback) {}
+	FILTER_ITEM_BUTTON(LPCWSTR _name, void (*_callback)(EDIT_SECTION* edit, OBJECT_HANDLE object, LPCWSTR effect, LPCWSTR item))
+		: name(_name), callback2(_callback) {}
+	FILTER_ITEM_BUTTON(LPCWSTR _name, void (*_callback)(EDIT_SECTION* edit)) : name(_name), callback(_callback) {} // ※互換対応
 	LPCWSTR type = L"button";			// 設定の種別
 	LPCWSTR name;						// 設定名
-	void (*callback)(EDIT_SECTION*);	// ボタンを押した時のコールバック関数 (呼び出し時に各設定項目の設定値が更新されます)
+	void (*callback)(EDIT_SECTION*) = nullptr; // ボタンを押した時のコールバック関数 (呼び出し時に各設定項目の設定値が更新されます)
+	void (*callback2)(EDIT_SECTION*, OBJECT_HANDLE, LPCWSTR, LPCWSTR) = nullptr; // 同上
 };
 
 // 文字列項目構造体 ※1行の文字列
@@ -199,6 +251,32 @@ struct FILTER_ITEM_SEPARATOR {
 	FILTER_ITEM_SEPARATOR(LPCWSTR _name) : name(_name) {}
 	LPCWSTR type = L"separator";	// 設定の種別
 	LPCWSTR name;					// 設定名
+};
+
+// 非表示条件項目構造体
+// 非表示条件を満たした項目を非表示にすることが出来ます
+// 例：FILTER_ITEM_HIDE_RULE hide = { L"ファイル", L"チェック", FILTER_ITEM_HIDE_RULE::OPERATOR::EQUAL, 0 };
+struct FILTER_ITEM_HIDE_RULE {
+	enum class OPERATOR {
+		EQUAL		= 0, // == (等しい)
+		NOT_EQUAL	= 1, // != (等しくない)
+		GREATER		= 2, // > (より大きい)
+		LESS		= 3, // < (より小さい)
+	};
+	FILTER_ITEM_HIDE_RULE(LPCWSTR _name, LPCWSTR _condition_name, OPERATOR _condition_operator = OPERATOR::EQUAL, int _condition_value = 0)
+		: name(_name), condition_name(_condition_name), condition_operator(_condition_operator), condition_value(_condition_value) {}
+	LPCWSTR type = L"hiderule";			// 設定の種別
+	LPCWSTR name;						// 非表示にする設定名 ※設定値を持つ項目,設定グループ項目,セパレーター項目
+	LPCWSTR condition_name;				// 非表示の条件の設定名
+										// チェックボックス項目,リスト選択項目,ファイル選択項目,フォルダ選択項目
+										// ※セクション毎のチェックボックスはセクション毎が有効の場合は2を返却(0/1/2)
+										// ※ファイル,フォルダ選択項目は選択されているかを返却(0/1)
+										// ※nullptrを指定した場合は常に非表示
+										// ※"filter"を指定した場合はフィルタオブジェクトかを返却(0/1)
+										// ※"input"を指定した場合はオブジェクト入力項目種別(0=対象外/1=画像用/2=音声用/3=画像・音声対応)
+										// ※"output"を指定した場合はオブジェクト出力項目種別(0=対象外/1=画像用/2=音声用/3=画像・音声対応)
+	const OPERATOR condition_operator;	// 非表示の条件の比較種別
+	const int condition_value;			// 非表示の条件の比較値
 };
 
 //----------------------------------------------------------------------------------
@@ -289,6 +367,13 @@ enum class BLEND_STATE_MODE : int {
 	ADD		= 3,	// 出力を加算合成
 };
 
+// カメラ制御状態の種別
+enum class CAMERA_MODE : int {
+	OFF			= 0,	// カメラ制御対象外
+	ON			= 1,	// カメラ制御対象
+	EDIT_VIEW	= 2,	// カメラ制御対象(編集用視点)
+};
+
 //----------------------------------------------------------------------------------
 
 // 画像入力のピクセルフォーマット種別
@@ -311,16 +396,18 @@ enum class OUTPUT_PIXEL_FORMAT : int {
 
 //----------------------------------------------------------------------------------
 
-// RGBA32bit構造体
-struct PIXEL_RGBA {
-	unsigned char r, g, b, a;
-};
-
 // シーン情報構造体
 struct SCENE_INFO {
 	int width, height;		// シーンの解像度
 	int rate, scale;		// シーンのフレームレート
 	int sample_rate;		// シーンのサンプリングレート
+	int id;					// シーンのID
+	int origin_id;			// 描画処理の起点のシーンのID
+	int flag;				// フラグ
+	int64_t rendering_id;	// シーンの描画処理毎のID (画像・音声でID系統が異なります)
+	static constexpr int FLAG_REFERENCE_FRAME = 1; // シーンチェンジ、モーションブラーの参照フレームの描画処理か？
+
+	inline bool is_reference_frame() const { return flag & FLAG_REFERENCE_FRAME; }
 };
 
 // オブジェクト情報構造体
@@ -340,6 +427,8 @@ struct OBJECT_INFO {
 							// ※処理対象のフィルタ効果、オブジェクト入出力の固有ID
 	int flag;				// フラグ
 	static constexpr int FLAG_FILTER_OBJECT = 1;	// フィルタオブジェクトか？
+	static constexpr int FLAG_GROUP_TARGET = 2;		// グループ制御の対象か？
+	static constexpr int FLAG_CAMERA_TARGET = 4;	// カメラ制御の対象か？ (画像フィルタのみ)
 	int layer;				// オブジェクトの現在のレイヤー番号 ※描画対象のオブジェクトのレイヤー番号
 	int	index;				// 複数オブジェクト時の現在の対象番号 ※個別オブジェクト用
 	int	num;				// 複数オブジェクト時の対象数 (1 = 単体オブジェクト / 0 = 不定) ※個別オブジェクト用
@@ -347,8 +436,12 @@ struct OBJECT_INFO {
 	int frame_e;			// 全体(シーン)基準のオブジェクトの終了フレーム(0からの番号)
 	int effect_layer;		// 対象エフェクトの現在のレイヤー番号 ※自身のオブジェクトのレイヤー番号
 	int origin_frame;		// 全体(シーン)基準のレンダリングの起点フレーム(0からの整数)
+	OBJECT_HANDLE handle;	// 自身のオブジェクトのハンドル
+	EFFECT_HANDLE effect_handle;	// 自身のエフェクトのハンドル
 
 	inline bool is_filter_object() const { return flag & FLAG_FILTER_OBJECT; }
+	inline bool is_group_target() const { return flag & FLAG_GROUP_TARGET; }
+	inline bool is_camera_target() const { return flag & FLAG_CAMERA_TARGET; }
 };
 
 // オブジェクトの画像パラメータ構造体
@@ -373,11 +466,71 @@ struct EFFECT_ITEM_PARAM {
 
 //----------------------------------------------------------------------------------
 
+// アンカー処理セクション構造体
+// アンカーのドラッグ移動のコールバック関数内で利用出来ます
+// コールバック関数内では汎用データ項目を更新出来ます
+// ※トラックバー項目の変更は今後追加予定です
+struct ANCHOR_SECTION {
+	// ANCHOR_HANDLEの関数で指定したアンカーのインデックス
+	int index;
+
+	// アンカーのドラッグ移動先の座標
+	float x, y, z;
+
+	// アンカーの今回のドラッグ移動量
+	float dx, dy, dz;
+
+	// アンカーのドラッグ開始座標
+	float origin_x, origin_y, origin_z;
+
+	// ANCHOR_HANDLEの関数で指定したパラメータデータのポインタ
+	void* param;
+
+	// ユーザーデータのポインタ (FLAG_USERDATAが有効の時に設定されます)
+	// func_create()で返却したユーザーデータのポインタ
+	void* userdata;
+
+	// 編集セクション関数 ※アンカー処理中は参照系の関数が利用出来ます
+	EDIT_SECTION* edit;
+
+	// 自身のオブジェクトのハンドル
+	OBJECT_HANDLE object;
+
+	// 自身のエフェクトのハンドル
+	EFFECT_HANDLE effect;
+
+};
+
+// アンカー操作ハンドル構造体
+struct ANCHOR_HANDLE {
+	// ドラッグ移動可能なアンカーのポイントを設定する
+	// index			: 任意のアンカーのインデックス ※ANCHOR_SECTIONに設定されます
+	// x,y,z			: アンカーの座標 ※オブジェクトの座標系
+	// flag				: アンカーのフラグ ※現状は0を設定
+	// param			: 任意のパラメータデータのポインタ ※ANCHOR_SECTIONに設定されます
+	// func_proc_anchor	: アンカーのドラッグ移動処理のコールバック関数
+	void (*set_anchor_move_point)(int index, float x, float y, float z, int flag, void* param, void (*func_proc_anchor)(ANCHOR_SECTION* acnhor));
+
+	// アンカーのラインを設定する
+	// x0,y0,z0			: アンカーの開始座標
+	// x1,y1,z1			: アンカーの終了座標
+	// flag				: アンカーのフラグ ※現状は0を設定
+	// color			: アンカーラインの色
+	void (*set_anchor_line)(float x0, float y0, float z0, float x1, float y1, float z1, int flag, PIXEL_RGBA color);
+
+};
+
+//----------------------------------------------------------------------------------
+
 // d3d11.h向けの前方宣言 ※includeしないで良いように定義
 struct ID3D11Texture2D;
 struct ID3D11BlendState;
 struct ID3D11SamplerState;
 struct IDWriteFont;
+// DirectXMath.h向けの前方宣言
+namespace DirectX {
+	struct XMMATRIX;
+}
 
 // 画像フィルタ処理用構造体
 struct FILTER_PROC_VIDEO {
@@ -463,6 +616,7 @@ struct FILTER_PROC_VIDEO {
 	void (*set_default_anchor)(int width, int height);
 
 	// 描画時の合成モードを設定します
+	// フレームバッファへの描画の合成モードは元々の合成モードが通常の場合のみ反映されます
 	// 合成モードを利用すると描画処理が重くなります
 	// blend	: 合成モード
 	void (*set_blend_mode)(BLEND_MODE blend);
@@ -766,14 +920,43 @@ struct FILTER_PROC_VIDEO {
 
 	// 指定のエフェクトを実行します
 	// フィルタ効果、入力項目(図形等)のエフェクトが実行出来ます
+	// ※name,param_list,resourceの全てをnullptr指定すると自身以降のフィルタ効果を実行します
 	// name			: 実行するエフェクト名 (エイリアスファイルのeffect.nameの値)
 	// param_list	: 設定パラメータのリストへのポインタ ※nullptrの場合は設定無し
 	// param_num	: 設定パラメータの数
 	// resource		: エフェクトの処理対象の画像リソース名 ※エフェクトが入力項目の場合は新規作成します
 	//				  "object"			= 現在のオブジェクト ※nullptrの指定でも現在のオブジェクトになります
 	//				  "resource:xxxx"	= 標準リソース(xxxxは任意の名前)
+	//				  ※標準リソースが対象の場合も現在のオブジェクトの画像パラメータが参照・更新されます
 	// 戻り値		: 失敗した場合はfalse (エフェクト名や画像リソース名が不正な場合等)
 	bool (*exec_effect)(LPCWSTR name, EFFECT_ITEM_PARAM* param_list, int param_num, LPCWSTR resource);
+
+	// 描画時の合成モードを設定します
+	// set_blend_mode()と異なりフレームバッファへの描画の合成モードも常に反映されます
+	// 合成モードを利用すると描画処理が重くなります
+	// blend	: 合成モード
+	void (*set_blend_mode_force)(BLEND_MODE blend);
+
+	// 現在のオブジェクトに影響しているグループ制御オブジェクトを取得します
+	// layer	: 上位の影響しているグループ制御のインデックス(0は直前のグループ制御)
+	// 戻り値	: 取得したグループ制御オブジェクトのハンドル (グループ制御対象外の場合はnullptrを返却)
+	OBJECT_HANDLE (*get_group_control_object)(int index);
+
+	// 現在のオブジェクトに適用されるグループ制御の座標変換行列を取得します (グループ制御対象を結合した行列)
+	// 戻り値	: グループ制御対象外の場合はfalse
+	bool (*get_group_matrix)(DirectX::XMMATRIX* matrix);
+
+	// 現在のオブジェクトのカメラ制御の状態を取得します
+	// 戻り値	: カメラ制御状態
+	CAMERA_MODE (*get_camera_mode)();
+
+	// 現在のオブジェクトに影響しているカメラ制御オブジェクトを取得します
+	// 戻り値	: 取得したカメラ制御オブジェクトのハンドル (カメラ制御対象外の場合はnullptrを返却)
+	OBJECT_HANDLE (*get_camera_control_object)();
+
+	// アンカー操作ハンドル
+	// アンカーが設定出来ない場合はnullptrが設定されます
+	ANCHOR_HANDLE* anchor;
 
 };
 
@@ -830,6 +1013,16 @@ struct FILTER_PROC_AUDIO {
 	// ユーザーデータのポインタ (FLAG_USERDATAが有効の時に設定されます)
 	// func_create()で返却したユーザーデータのポインタ
 	void* userdata;
+
+	// 現在のオーディオバッファのデータを取得する
+	// buffer		: 音声データの格納先へのポインタ ※音声データはPCM(float)32bit
+	// channel		: 音声データのチャンネル ( 0 = 左チャンネル / 1 = 右チャンネル )
+	void (*get_audiobuffer_data)(float* buffer, int channel);
+
+	// 現在のオーディオバッファのデータを設定する
+	// buffer		: 音声データへのポインタ ※音声データはPCM(float)32bit
+	// channel		: 音声データのチャンネル ( 0 = 左チャンネル / 1 = 右チャンネル )
+	void (*set_audiobuffer_data)(const float* buffer, int channel);
 
 };
 

@@ -29,6 +29,8 @@ GetFilterPluginTable()
 		settings,
 		func_proc_video,
 		nullptr, // func_proc_audio
+		nullptr, // func_create
+		nullptr, // func_destroy
 	};
 	return &fpt;
 }
