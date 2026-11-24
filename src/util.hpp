@@ -155,7 +155,8 @@ private:
 	std::size_t size;
 	bool alive=true;
 	std::unique_ptr<Thread[]> threads;
-	std::function<void(int)> func;
+	static void pass(int _) {}
+	std::function<void(int)> func=pass;
 	std::atomic<int> current_i=0;
 	int max_i=0;
 	std::exception_ptr ep;
@@ -225,7 +226,7 @@ public:
 			auto lk=std::unique_lock(threads[i].mx);
 			threads[i].cv.wait(lk, [this, i]{ return !(threads[i].ready); });
 		}
-		func = nullptr;
+		func = pass;
 		if ( ep ) {
 			std::rethrow_exception(std::exchange(ep, nullptr));
 		}
